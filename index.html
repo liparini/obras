@@ -219,12 +219,9 @@
         agrupadas[d.parte] += d.quantidade * d.valor;
       });
 
-      // Ordenar do maior para o menor gasto
       const ordenadas = Object.entries(agrupadas).sort((a, b) => b[1] - a[1]);
       const labels = ordenadas.map(e => e[0]);
       const data = ordenadas.map(e => e[1]);
-
-      // Cores automáticas
       const colors = labels.map((_, i) => `hsl(${i * 360 / labels.length}, 70%, 50%)`);
 
       if (chart) chart.destroy();
@@ -251,7 +248,10 @@
 
     // Exportar Excel
     window.exportarExcel = function() {
-      const filtradas = getDespesasFiltradas().map(d => ({
+      let filtradas = getDespesasFiltradas();
+      filtradas.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+      const dadosExcel = filtradas.map(d => ({
         Data: formatarData(d.data),
         Item: d.item,
         Quantidade: d.quantidade,
@@ -259,8 +259,9 @@
         Parte: d.parte,
         Total: (d.quantidade * d.valor).toFixed(2)
       }));
-      if (filtradas.length === 0) return alert("Nenhuma despesa encontrada.");
-      const ws = XLSX.utils.json_to_sheet(filtradas);
+
+      if (dadosExcel.length === 0) return alert("Nenhuma despesa encontrada.");
+      const ws = XLSX.utils.json_to_sheet(dadosExcel);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Despesas");
       XLSX.writeFile(wb, "despesas.xlsx");
@@ -268,7 +269,10 @@
 
     // Exportar PDF
     window.exportarPDF = function() {
-      const filtradas = getDespesasFiltradas().map(d => [
+      let filtradas = getDespesasFiltradas();
+      filtradas.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+      const dadosPDF = filtradas.map(d => [
         formatarData(d.data),
         d.item,
         d.quantidade,
@@ -276,13 +280,14 @@
         d.parte,
         "R$ " + (d.quantidade * d.valor).toFixed(2)
       ]);
-      if (filtradas.length === 0) return alert("Nenhuma despesa encontrada.");
+
+      if (dadosPDF.length === 0) return alert("Nenhuma despesa encontrada.");
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       doc.text("Relatório de Despesas de Obras", 14, 15);
       doc.autoTable({
         head: [["Data", "Item", "Quantidade", "Valor Unitário", "Parte", "Total"]],
-        body: filtradas,
+        body: dadosPDF,
         startY: 20
       });
       doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY + 10);
