@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Controle de Despesas de Obras</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
+    h1 { text-align: center; }
+    .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
+    form { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+    input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    #total { margin-top: 15px; font-weight: bold; font-size: 1.2em; text-align: right; }
+    .filters { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; }
+    .btn { padding: 5px 10px; margin: 2px; border: none; border-radius: 4px; cursor: pointer; }
+    .btn-edit { background: #ffc107; color: black; }
+    .btn-delete { background: #dc3545; color: white; }
+    .btn-export { background: #28a745; color: white; }
+    .btn-pdf { background: #007bff; color: white; }
+    .btn-add { background: #28a745; color: white; font-weight: bold; }
+    #grafico-container { max-width: 600px; margin: 30px auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Controle de Despesas de Obras</h1>
+
+    <!-- Formulário -->
+    <form id="form-despesa">
+      <input type="date" id="data" required>
+      <input type="text" id="item" placeholder="Item" required>
+      <input type="number" id="quantidade" placeholder="Quantidade" min="1" required>
+      <input type="number" id="valor" placeholder="Valor (R$)" step="0.01" required>
+      <select id="parte" required>
+        <option value="">Parte da Obra</option>
+        <option value="Fundação">Fundação</option>
+        <option value="Estrutura">Estrutura</option>
+        <option value="Alvenaria">Alvenaria</option>
+        <option value="Acabamento">Acabamento</option>
+        <option value="Instalações">Instalações</option>
+        <option value="Pedreiro">Pedreiro</option>
+        <option value="Arrimo">Arrimo</option>
+        <option value="Muro">Muro</option>
+        <option value="Outros">Outros</option>
+      </select>
+      <button type="submit" class="btn btn-add" id="btn-adicionar">Adicionar</button>
+    </form>
+
+    <!-- Filtros -->
+    <div class="filters">
+      <div>
+        <label for="filtro">Filtrar por parte:</label>
+        <select id="filtro">
+          <option value="Todas">Todas</option>
+          <option value="Fundação">Fundação</option>
+          <option value="Estrutura">Estrutura</option>
+          <option value="Alvenaria">Alvenaria</option>
+          <option value="Acabamento">Acabamento</option>
+          <option value="Instalações">Instalações</option>
+          <option value="Pedreiro">Pedreiro</option>
+          <option value="Arrimo">Arrimo</option>
+          <option value="Muro">Muro</option>
+          <option value="Outros">Outros</option>
+        </select>
+      </div>
+      <div>
+        <label>De: <input type="date" id="filtroDataInicio"></label>
+        <label>Até: <input type="date" id="filtroDataFim"></label>
+      </div>
+      <button class="btn" onclick="atualizarTabela()">Aplicar Filtros</button>
+      <button class="btn btn-export" onclick="exportarExcel()">Exportar Excel</button>
+      <button class="btn btn-pdf" onclick="exportarPDF()">Exportar PDF</button>
+    </div>
+
+    <!-- Tabela -->
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Item</th>
+          <th>Quantidade</th>
+          <th>Valor Unitário</th>
+          <th>Parte</th>
+          <th>Total</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="lista-despesas"></tbody>
+    </table>
+
+    <div id="total">Total Gasto: R$ 0,00</div>
+
+    <!-- Gráfico -->
+    <div id="grafico-container">
+      <canvas id="graficoDespesas"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('form-despesa');
+    const lista = document.getElementById('lista-despesas');
+    const totalDiv = document.getElementById('total');
+    const filtro = document.getElementById('filtro');
+    const filtroDataInicio = document.getElementById('filtroDataInicio');
+    const filtroDataFim = document.getElementById('filtroDataFim');
+    const btnAdicionar = document.getElementById('btn-adicionar');
+    const ctx = document.getElementById('graficoDespesas').getContext('2d');
+
+    let despesas = JSON.parse(localStorage.getItem('despesas')) || [];
+    let editIndex = -1;
+    let chart;
+
+    atualizarTabela();
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const data = document.getElementById('data').value;
+      const item = document.getElementById('item').value;
+      const quantidade = parseInt(document.getElementById('quantidade').value);
+      const valor = parseFloat(document.getElementById('valor').value);
+      const parte = document.getElementById('parte').value;
+
+      if (editIndex === -1) {
+        despesas.push({ data, item, quantidade, valor, parte });
+      } else {
+        despesas[editIndex] = { data, item, quantidade, valor, parte };
+        editIndex = -1;
+      }
+
+      form.reset();
+      btnAdicionar.textContent = "Adicionar";
+      salvarLocalStorage();
+      atualizarTabela();
+    });
+
+    function formatarData(dataISO) {
+      if (!dataISO) return "";
+      const [ano, mes, dia] = dataISO.split("-");
+      return `${dia}-${mes}-${ano}`;
+    }
+
+    function getDespesasFiltradas() {
+      const filtroParte = filtro.value;
+      const inicio = filtroDataInicio.value ? new Date(filtroDataInicio.value) : null;
+      const fim = filtroDataFim.value ? new Date(filtroDataFim.value) : null;
+      return despesas.filter(d => {
+        const dataDespesa = new Date(d.data);
+        let dentroPeriodo = true;
+        if (inicio && dataDespesa < inicio) dentroPeriodo = false;
+        if (fim && dataDespesa > fim) dentroPeriodo = false;
+        return (filtroParte === "Todas" || d.parte === filtroParte) && dentroPeriodo;
+      });
+    }
+
+    function atualizarTabela() {
+      lista.innerHTML = '';
+      let total = 0;
+      const filtradas = getDespesasFiltradas();
+      filtradas.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatarData(d.data)}</td>
+          <td>${d.item}</td>
+          <td>${d.quantidade}</td>
+          <td>R$ ${d.valor.toFixed(2)}</td>
+          <td>${d.parte}</td>
+          <td>R$ ${(d.quantidade * d.valor).toFixed(2)}</td>
+          <td>
+            <button class="btn btn-edit" onclick="editarDespesa(${despesas.indexOf(d)})">Editar</button>
+            <button class="btn btn-delete" onclick="excluirDespesa(${despesas.indexOf(d)})">Excluir</button>
+          </td>
+        `;
+        lista.appendChild(tr);
+        total += d.quantidade * d.valor;
+      });
+      totalDiv.textContent = "Total Gasto: R$ " + total.toFixed(2);
+      atualizarGrafico();
+    }
+
+    function salvarLocalStorage() {
+      localStorage.setItem('despesas', JSON.stringify(despesas));
+    }
+
+    window.editarDespesa = function(index) {
+      const d = despesas[index];
+      document.getElementById('data').value = d.data;
+      document.getElementById('item').value = d.item;
+      document.getElementById('quantidade').value = d.quantidade;
+      document.getElementById('valor').value = d.valor;
+      document.getElementById('parte').value = d.parte;
+      editIndex = index;
+      btnAdicionar.textContent = "Salvar Alterações";
+    }
+
+    window.excluirDespesa = function(index) {
+      if (confirm("Deseja realmente excluir esta despesa?")) {
+        despesas.splice(index, 1);
+        salvarLocalStorage();
+        atualizarTabela();
+      }
+    }
+
+    function atualizarGrafico() {
+      const filtradas = getDespesasFiltradas();
+      const agrupadas = {};
+      filtradas.forEach(d => {
+        if (!agrupadas[d.parte]) agrupadas[d.parte] = 0;
+        agrupadas[d.parte] += d.quantidade * d.valor;
+      });
+      const labels = Object.keys(agrupadas);
+      const data = Object.values(agrupadas);
+
+      // Gerar cores automáticas distintas
+      const colors = labels.map((_, i) => `hsl(${i * 360 / labels.length}, 70%, 50%)`);
+
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: colors
+          }]
+        },
+        options: {
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    // Exportar Excel
+    window.exportarExcel = function() {
+      const filtradas = getDespesasFiltradas().map(d => ({
+        Data: formatarData(d.data),
+        Item: d.item,
+        Quantidade: d.quantidade,
+        "Valor Unitário": d.valor.toFixed(2),
+        Parte: d.parte,
+        Total: (d.quantidade * d.valor).toFixed(2)
+      }));
+      if (filtradas.length === 0) return alert("Nenhuma despesa encontrada.");
+      const ws = XLSX.utils.json_to_sheet(filtradas);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Despesas");
+      XLSX.writeFile(wb, "despesas.xlsx");
+    }
+
+    // Exportar PDF
+    window.exportarPDF = function() {
+      const filtradas = getDespesasFiltradas().map(d => [
+        formatarData(d.data),
+        d.item,
+        d.quantidade,
+        "R$ " + d.valor.toFixed(2),
+        d.parte,
+        "R$ " + (d.quantidade * d.valor).toFixed(2)
+      ]);
+      if (filtradas.length === 0) return alert("Nenhuma despesa encontrada.");
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text("Relatório de Despesas de Obras", 14, 15);
+      doc.autoTable({
+        head: [["Data", "Item", "Quantidade", "Valor Unitário", "Parte", "Total"]],
+        body: filtradas,
+        startY: 20
+      });
+      doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY + 10);
+      doc.save("despesas.pdf");
+    }
+  </script>
+</body>
+</html>
