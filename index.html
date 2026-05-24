@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Controle de Despesas de Obras</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -9,290 +10,356 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
-    h1 { text-align: center; }
-    .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
+    h1   { text-align: center; }
+    .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,.1); }
     form { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
     input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
     #total { margin-top: 15px; font-weight: bold; font-size: 1.2em; text-align: right; }
-    .filters { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; }
-    .btn { padding: 5px 10px; margin: 2px; border: none; border-radius: 4px; cursor: pointer; }
-    .btn-edit { background: #ffc107; color: black; }
-    .btn-delete { background: #dc3545; color: white; }
-    .btn-export { background: #28a745; color: white; }
-    .btn-pdf { background: #007bff; color: white; }
-    .btn-add { background: #28a745; color: white; font-weight: bold; }
+    .filters { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center; }
+    .btn          { padding: 5px 10px; margin: 2px; border: none; border-radius: 4px; cursor: pointer; }
+    .btn-edit     { background: #ffc107; color: black; }
+    .btn-delete   { background: #dc3545; color: white; }
+    .btn-export   { background: #28a745; color: white; }
+    .btn-pdf      { background: #007bff; color: white; }
+    .btn-add      { background: #28a745; color: white; font-weight: bold; }
+    .btn-migrate  { background: #6f42c1; color: white; font-size: 0.85em; }
     #grafico-container { max-width: 600px; margin: 30px auto; }
+
+    /* overlay de carregamento */
+    #loading { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35);
+               z-index:999; justify-content:center; align-items:center; }
+    #loading span { background:#fff; padding:18px 30px; border-radius:8px; font-size:1.1em; }
+
+    /* aviso de configuração */
+    #aviso-config { background:#fff3cd; border:1px solid #ffc107; padding:12px 16px;
+                    border-radius:6px; margin-bottom:16px; display:none; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Controle de Despesas de Obras</h1>
+<div id="loading"><span>⏳ Salvando...</span></div>
 
-    <!-- Formulário -->
-    <form id="form-despesa">
-      <input type="date" id="data" required>
-      <input type="text" id="item" placeholder="Item" required>
-      <input type="number" id="quantidade" placeholder="Quantidade" min="1" required>
-      <input type="number" id="valor" placeholder="Valor (R$)" step="0.01" required>
-      <select id="parte" required>
-        <option value="">Parte da Obra</option>
-        <option value="Fundação">Fundação</option>
-        <option value="Estrutura">Estrutura</option>
-        <option value="Alvenaria">Alvenaria</option>
-        <option value="Acabamento">Acabamento</option>
-        <option value="Instalações">Instalações</option>
-        <option value="Pedreiro">Pedreiro</option>
-        <option value="Arrimo">Arrimo</option>
-        <option value="Muro">Muro</option>
-        <option value="Outros">Outros</option>
-      </select>
-      <button type="submit" class="btn btn-add" id="btn-adicionar">Adicionar</button>
-    </form>
+<div class="container">
+  <h1>Controle de Despesas de Obras</h1>
 
-    <!-- Filtros -->
-    <div class="filters">
-      <div>
-        <label for="filtro">Filtrar por parte:</label>
-        <select id="filtro">
-          <option value="Todas">Todas</option>
-          <option value="Fundação">Fundação</option>
-          <option value="Estrutura">Estrutura</option>
-          <option value="Alvenaria">Alvenaria</option>
-          <option value="Acabamento">Acabamento</option>
-          <option value="Instalações">Instalações</option>
-          <option value="Pedreiro">Pedreiro</option>
-          <option value="Arrimo">Arrimo</option>
-          <option value="Muro">Muro</option>
-          <option value="Outros">Outros</option>
-        </select>
-      </div>
-      <div>
-        <label>De: <input type="date" id="filtroDataInicio"></label>
-        <label>Até: <input type="date" id="filtroDataFim"></label>
-      </div>
-      <button class="btn" onclick="atualizarTabela()">Aplicar Filtros</button>
-      <button class="btn btn-export" onclick="exportarExcel()">Exportar Excel</button>
-      <button class="btn btn-pdf" onclick="exportarPDF()">Exportar PDF</button>
-    </div>
-
-    <!-- Tabela -->
-    <table>
-      <thead>
-        <tr>
-          <th>Data</th>
-          <th>Item</th>
-          <th>Quantidade</th>
-          <th>Valor Unitário</th>
-          <th>Parte</th>
-          <th>Total</th>
-          <th>Ações</th>
-        </tr>
-      </thead>
-      <tbody id="lista-despesas"></tbody>
-    </table>
-
-    <div id="total">Total Gasto: R$ 0,00</div>
-
-    <!-- Gráfico -->
-    <div id="grafico-container">
-      <canvas id="graficoDespesas"></canvas>
-    </div>
+  <div id="aviso-config">
+    ⚠️ <strong>URL do Google Apps Script não configurada.</strong>
+    Edite a variável <code>SCRIPT_URL</code> no início do JavaScript deste arquivo e insira a URL da sua implantação.
+    <a href="https://github.com/liparini/obras" target="_blank">Ver instruções no README</a>
   </div>
 
-  <script>
-    const form = document.getElementById('form-despesa');
-    const lista = document.getElementById('lista-despesas');
-    const totalDiv = document.getElementById('total');
-    const filtro = document.getElementById('filtro');
-    const filtroDataInicio = document.getElementById('filtroDataInicio');
-    const filtroDataFim = document.getElementById('filtroDataFim');
-    const btnAdicionar = document.getElementById('btn-adicionar');
-    const ctx = document.getElementById('graficoDespesas').getContext('2d');
+  <!-- Formulário -->
+  <form id="form-despesa">
+    <input type="date"   id="data"       required>
+    <input type="text"   id="item"       placeholder="Item" required>
+    <input type="number" id="quantidade" placeholder="Quantidade" min="1" required>
+    <input type="number" id="valor"      placeholder="Valor (R$)" step="0.01" required>
+    <select id="parte" required>
+      <option value="">Parte da Obra</option>
+      <option>Fundação</option><option>Estrutura</option><option>Alvenaria</option>
+      <option>Acabamento</option><option>Instalações</option><option>Pedreiro</option>
+      <option>Arrimo</option><option>Muro</option><option>Outros</option>
+    </select>
+    <button type="submit" class="btn btn-add" id="btn-adicionar">Adicionar</button>
+  </form>
 
-    let despesas = JSON.parse(localStorage.getItem('despesas')) || [];
-    let editIndex = -1;
-    let chart;
+  <!-- Filtros -->
+  <div class="filters">
+    <div>
+      <label>Filtrar por parte:
+        <select id="filtro">
+          <option value="Todas">Todas</option>
+          <option>Fundação</option><option>Estrutura</option><option>Alvenaria</option>
+          <option>Acabamento</option><option>Instalações</option><option>Pedreiro</option>
+          <option>Arrimo</option><option>Muro</option><option>Outros</option>
+        </select>
+      </label>
+    </div>
+    <div>
+      <label>De: <input type="date" id="filtroDataInicio"></label>
+      <label>Até: <input type="date" id="filtroDataFim"></label>
+    </div>
+    <button class="btn"          onclick="atualizarTabela()">Aplicar Filtros</button>
+    <button class="btn btn-export" onclick="exportarExcel()">Exportar Excel</button>
+    <button class="btn btn-pdf"    onclick="exportarPDF()">Exportar PDF</button>
+    <button class="btn btn-migrate" onclick="migrarDadosIniciais()" id="btn-migrar"
+            title="Importa os 45 registros do xlsx para o Google Sheets (execute apenas uma vez)">
+      📥 Migrar dados iniciais
+    </button>
+  </div>
 
+  <!-- Tabela -->
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th><th>Item</th><th>Quantidade</th>
+        <th>Valor Unitário</th><th>Parte</th><th>Total</th><th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="lista-despesas"></tbody>
+  </table>
+
+  <div id="total">Total Gasto: R$ 0,00</div>
+
+  <!-- Gráfico -->
+  <div id="grafico-container">
+    <canvas id="graficoDespesas"></canvas>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  ⚙️  CONFIGURE AQUI — cole a URL do seu Apps Script abaixo
+// ============================================================
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzq6FnCf2W5n3KFC9u_Wxi8T4ndksHM6qcYACepNNQMntkyawVn_r2_PuW4Eno7tjNV/exec';
+// ============================================================
+
+// ── dados históricos para migração única ────────────────────
+const DADOS_MIGRACAO = [{"data":"2026-05-20","item":"Cimento","quantidade":10,"valor":35.0,"parte":"Arrimo"},{"data":"2026-05-20","item":"Ferragem","quantidade":1,"valor":50.0,"parte":"Arrimo"},{"data":"2026-05-15","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2026-05-15","item":"Arame Cozido","quantidade":2,"valor":20.0,"parte":"Arrimo"},{"data":"2026-05-14","item":"Ferragem (4.2 e arame cozido)","quantidade":16,"valor":12.5,"parte":"Arrimo"},{"data":"2026-05-12","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Brita 1","quantidade":2,"valor":230.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Lona","quantidade":3,"valor":10.5,"parte":"Outros"},{"data":"2026-03-31","item":"Projeto","quantidade":4,"valor":2250.0,"parte":"Outros"},{"data":"2025-10-15","item":"Cimento + frete (moto)","quantidade":1,"valor":38.0,"parte":"Arrimo"},{"data":"2025-10-15","item":"Mão de obra","quantidade":3,"valor":250.0,"parte":"Pedreiro"},{"data":"2025-10-13","item":"Cimento","quantidade":5,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-10","item":"Mão de obra","quantidade":7,"valor":150.0,"parte":"Pedreiro"},{"data":"2025-10-10","item":"Mão de obra","quantidade":5,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-09","item":"Cimento","quantidade":3,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-07","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-10-07","item":"Areia","quantidade":2,"valor":160.0,"parte":"Arrimo"},{"data":"2025-10-03","item":"Mão de obra","quantidade":2,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-03","item":"Cimento","quantidade":10,"valor":32.0,"parte":"Arrimo"},{"data":"2025-10-01","item":"Tela (Doada pelo De)","quantidade":1,"valor":50.0,"parte":"Outros"},{"data":"2025-09-26","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-25","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-09-23","item":"Areia","quantidade":1,"valor":160.0,"parte":"Arrimo"},{"data":"2025-09-15","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-09-12","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-09","item":"Brita 1","quantidade":1,"valor":230.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Areia","quantidade":1,"valor":165.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Abraçadeira","quantidade":20,"valor":0.4,"parte":"Outros"},{"data":"2025-09-05","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-02","item":"Cimento","quantidade":20,"valor":31.0,"parte":"Arrimo"},{"data":"2025-09-02","item":"Bloco 20","quantidade":375,"valor":3.5,"parte":"Arrimo"},{"data":"2025-09-02","item":"Tela","quantidade":10,"valor":35.18,"parte":"Outros"},{"data":"2025-08-29","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-22","item":"Mão de obra","quantidade":5,"valor":185.0,"parte":"Pedreiro"},{"data":"2025-08-15","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-14","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Mão de obra","quantidade":3,"valor":150.0,"parte":"Pedreiro"},{"data":"2025-08-08","item":"Brita 1","quantidade":3,"valor":220.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Pedra de mão","quantidade":3,"valor":260.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Cimento","quantidade":30,"valor":32.0,"parte":"Arrimo"},{"data":"2025-02-24","item":"Retirada de Entulho","quantidade":1,"valor":2400.0,"parte":"Outros"},{"data":"2024-07-26","item":"Demolição| Muro Lateral","quantidade":1,"valor":7307.2,"parte":"Muro"},{"data":"2023-12-22","item":"Projeto (Não feito pelo arquiteto)","quantidade":1,"valor":800.0,"parte":"Outros"},{"data":"2023-11-26","item":"Trena","quantidade":1,"valor":37.63,"parte":"Outros"}];
+
+// ── estado global ────────────────────────────────────────────
+let despesas  = [];
+let editIndex = -1;
+let chart;
+
+const form              = document.getElementById('form-despesa');
+const lista             = document.getElementById('lista-despesas');
+const totalDiv          = document.getElementById('total');
+const filtro            = document.getElementById('filtro');
+const filtroDataInicio  = document.getElementById('filtroDataInicio');
+const filtroDataFim     = document.getElementById('filtroDataFim');
+const btnAdicionar      = document.getElementById('btn-adicionar');
+const avisoConfig       = document.getElementById('aviso-config');
+const loadingEl         = document.getElementById('loading');
+const ctx               = document.getElementById('graficoDespesas').getContext('2d');
+
+// ── inicialização ────────────────────────────────────────────
+(async () => {
+  if (!SCRIPT_URL || SCRIPT_URL === 'COLE_AQUI_A_URL_DO_SEU_APPS_SCRIPT') {
+    avisoConfig.style.display = 'block';
+    return;
+  }
+  await carregarDespesas();
+})();
+
+// ── API helpers ──────────────────────────────────────────────
+function mostrarLoading(v) { loadingEl.style.display = v ? 'flex' : 'none'; }
+
+async function apiGet() {
+  const res  = await fetch(SCRIPT_URL);
+  const json = await res.json();
+  if (json.status !== 'ok') throw new Error(json.msg);
+  return json.data;
+}
+
+async function apiPost(payload) {
+  const res  = await fetch(SCRIPT_URL, {
+    method : 'POST',
+    body   : JSON.stringify(payload)   // sem Content-Type → texto simples, sem preflight
+  });
+  const json = await res.json();
+  if (json.status !== 'ok') throw new Error(json.msg);
+}
+
+async function carregarDespesas() {
+  mostrarLoading(true);
+  try {
+    despesas = await apiGet();
     atualizarTabela();
+  } catch (e) {
+    alert('Erro ao carregar dados: ' + e.message);
+  } finally {
+    mostrarLoading(false);
+  }
+}
 
-    form.addEventListener('submit', function(e) {
-      e.preventDefault();
-      const data = document.getElementById('data').value;
-      const item = document.getElementById('item').value;
-      const quantidade = parseInt(document.getElementById('quantidade').value);
-      const valor = parseFloat(document.getElementById('valor').value);
-      const parte = document.getElementById('parte').value;
+// ── formulário ───────────────────────────────────────────────
+form.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const d = {
+    data:       document.getElementById('data').value,
+    item:       document.getElementById('item').value,
+    quantidade: parseInt(document.getElementById('quantidade').value),
+    valor:      parseFloat(document.getElementById('valor').value),
+    parte:      document.getElementById('parte').value
+  };
 
-      if (editIndex === -1) {
-        despesas.push({ data, item, quantidade, valor, parte });
-      } else {
-        despesas[editIndex] = { data, item, quantidade, valor, parte };
-        editIndex = -1;
-      }
-
-      form.reset();
-      btnAdicionar.textContent = "Adicionar";
-      salvarLocalStorage();
-      atualizarTabela();
-    });
-
-    function formatarData(dataISO) {
-      if (!dataISO) return "";
-      const [ano, mes, dia] = dataISO.split("-");
-      return `${dia}-${mes}-${ano}`;
+  mostrarLoading(true);
+  try {
+    if (editIndex === -1) {
+      await apiPost({ action: 'add', ...d });
+    } else {
+      await apiPost({ action: 'edit', index: editIndex, ...d });
+      editIndex = -1;
+      btnAdicionar.textContent = 'Adicionar';
     }
+    form.reset();
+    await carregarDespesas();
+  } catch (err) {
+    alert('Erro ao salvar: ' + err.message);
+    mostrarLoading(false);
+  }
+});
 
-    function getDespesasFiltradas() {
-      const filtroParte = filtro.value;
-      const inicio = filtroDataInicio.value ? new Date(filtroDataInicio.value) : null;
-      const fim = filtroDataFim.value ? new Date(filtroDataFim.value) : null;
-      return despesas.filter(d => {
-        const dataDespesa = new Date(d.data);
-        let dentroPeriodo = true;
-        if (inicio && dataDespesa < inicio) dentroPeriodo = false;
-        if (fim && dataDespesa > fim) dentroPeriodo = false;
-        return (filtroParte === "Todas" || d.parte === filtroParte) && dentroPeriodo;
-      });
-    }
+// ── tabela ───────────────────────────────────────────────────
+function formatarData(iso) {
+  if (!iso) return '';
+  const [a, m, d] = iso.split('-');
+  return `${d}-${m}-${a}`;
+}
 
-    function atualizarTabela() {
-      lista.innerHTML = '';
-      let total = 0;
-      let filtradas = getDespesasFiltradas();
+function getDespesasFiltradas() {
+  const fp    = filtro.value;
+  const inicio = filtroDataInicio.value ? new Date(filtroDataInicio.value) : null;
+  const fim    = filtroDataFim.value    ? new Date(filtroDataFim.value)    : null;
+  return despesas.filter(d => {
+    const dt = new Date(d.data);
+    if (inicio && dt < inicio) return false;
+    if (fim    && dt > fim)    return false;
+    return fp === 'Todas' || d.parte === fp;
+  });
+}
 
-      // Ordenar por data mais recente
-      filtradas.sort((a, b) => new Date(b.data) - new Date(a.data));
+function atualizarTabela() {
+  lista.innerHTML = '';
+  let total    = 0;
+  const filtradas = getDespesasFiltradas()
+    .slice()
+    .sort((a, b) => new Date(b.data) - new Date(a.data));
 
-      filtradas.forEach(d => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${formatarData(d.data)}</td>
-          <td>${d.item}</td>
-          <td>${d.quantidade}</td>
-          <td>R$ ${d.valor.toFixed(2)}</td>
-          <td>${d.parte}</td>
-          <td>R$ ${(d.quantidade * d.valor).toFixed(2)}</td>
-          <td>
-            <button class="btn btn-edit" onclick="editarDespesa(${despesas.indexOf(d)})">Editar</button>
-            <button class="btn btn-delete" onclick="excluirDespesa(${despesas.indexOf(d)})">Excluir</button>
-          </td>
-        `;
-        lista.appendChild(tr);
-        total += d.quantidade * d.valor;
-      });
+  filtradas.forEach(d => {
+    const subtotal = d.quantidade * d.valor;
+    total += subtotal;
+    const idx = despesas.indexOf(d);
+    const tr  = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${formatarData(d.data)}</td>
+      <td>${d.item}</td>
+      <td>${d.quantidade}</td>
+      <td>R$ ${d.valor.toFixed(2)}</td>
+      <td>${d.parte}</td>
+      <td>R$ ${subtotal.toFixed(2)}</td>
+      <td>
+        <button class="btn btn-edit"   onclick="editarDespesa(${idx})">Editar</button>
+        <button class="btn btn-delete" onclick="excluirDespesa(${idx})">Excluir</button>
+      </td>`;
+    lista.appendChild(tr);
+  });
 
-      totalDiv.textContent = "Total Gasto: R$ " + total.toFixed(2);
-      atualizarGrafico();
-    }
+  totalDiv.textContent = 'Total Gasto: R$ ' + total.toFixed(2);
+  atualizarGrafico();
+}
 
-    function salvarLocalStorage() {
-      localStorage.setItem('despesas', JSON.stringify(despesas));
-    }
+// ── editar / excluir ─────────────────────────────────────────
+window.editarDespesa = function(index) {
+  const d = despesas[index];
+  document.getElementById('data').value       = d.data;
+  document.getElementById('item').value       = d.item;
+  document.getElementById('quantidade').value = d.quantidade;
+  document.getElementById('valor').value      = d.valor;
+  document.getElementById('parte').value      = d.parte;
+  editIndex = index;
+  btnAdicionar.textContent = 'Salvar Alterações';
+};
 
-    window.editarDespesa = function(index) {
-      const d = despesas[index];
-      document.getElementById('data').value = d.data;
-      document.getElementById('item').value = d.item;
-      document.getElementById('quantidade').value = d.quantidade;
-      document.getElementById('valor').value = d.valor;
-      document.getElementById('parte').value = d.parte;
-      editIndex = index;
-      btnAdicionar.textContent = "Salvar Alterações";
-    }
+window.excluirDespesa = async function(index) {
+  if (!confirm('Deseja realmente excluir esta despesa?')) return;
+  mostrarLoading(true);
+  try {
+    await apiPost({ action: 'delete', index });
+    await carregarDespesas();
+  } catch (err) {
+    alert('Erro ao excluir: ' + err.message);
+    mostrarLoading(false);
+  }
+};
 
-    window.excluirDespesa = function(index) {
-      if (confirm("Deseja realmente excluir esta despesa?")) {
-        despesas.splice(index, 1);
-        salvarLocalStorage();
-        atualizarTabela();
-      }
-    }
+// ── migração única ───────────────────────────────────────────
+window.migrarDadosIniciais = async function() {
+  if (!confirm(
+    `Isso vai importar ${DADOS_MIGRACAO.length} registros históricos para o Google Sheets.\n` +
+    `⚠️ Todos os dados existentes na planilha serão substituídos!\n\nContinuar?`
+  )) return;
+  mostrarLoading(true);
+  try {
+    await apiPost({ action: 'importar', rows: DADOS_MIGRACAO });
+    await carregarDespesas();
+    document.getElementById('btn-migrar').style.display = 'none';
+    alert('✅ Migração concluída! 45 registros importados com sucesso.');
+  } catch (err) {
+    alert('Erro na migração: ' + err.message);
+    mostrarLoading(false);
+  }
+};
 
-    function atualizarGrafico() {
-      const filtradas = getDespesasFiltradas();
-      const agrupadas = {};
-      
-      filtradas.forEach(d => {
-        if (!agrupadas[d.parte]) agrupadas[d.parte] = 0;
-        agrupadas[d.parte] += d.quantidade * d.valor;
-      });
+// ── gráfico ──────────────────────────────────────────────────
+function atualizarGrafico() {
+  const agrupadas = {};
+  getDespesasFiltradas().forEach(d => {
+    agrupadas[d.parte] = (agrupadas[d.parte] || 0) + d.quantidade * d.valor;
+  });
+  const ordenadas = Object.entries(agrupadas).sort((a, b) => b[1] - a[1]);
+  const labels    = ordenadas.map(e => e[0]);
+  const data      = ordenadas.map(e => e[1]);
+  const colors    = labels.map((_, i) => `hsl(${i * 360 / labels.length}, 70%, 50%)`);
 
-      const ordenadas = Object.entries(agrupadas).sort((a, b) => b[1] - a[1]);
-      const labels = ordenadas.map(e => e[0]);
-      const data = ordenadas.map(e => e[1]);
-      const colors = labels.map((_, i) => `hsl(${i * 360 / labels.length}, 70%, 50%)`);
-
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: 'pie',
-        data: { labels, datasets: [{ data, backgroundColor: colors }] },
-        options: {
-          plugins: {
-            legend: { position: 'bottom' },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const valor = context.raw;
-                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                  const percentual = ((valor / total) * 100).toFixed(2);
-                  return `${context.label}: R$ ${valor.toFixed(2)} (${percentual}%)`;
-                }
-              }
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'pie',
+    data: { labels, datasets: [{ data, backgroundColor: colors }] },
+    options: {
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: c => {
+              const tot = c.dataset.data.reduce((a, b) => a + b, 0);
+              return `${c.label}: R$ ${c.raw.toFixed(2)} (${((c.raw / tot) * 100).toFixed(2)}%)`;
             }
           }
         }
-      });
+      }
     }
+  });
+}
 
-    // Exportar Excel
-    window.exportarExcel = function() {
-      let filtradas = getDespesasFiltradas();
-      filtradas.sort((a, b) => new Date(b.data) - new Date(a.data));
+// ── exportar Excel ───────────────────────────────────────────
+window.exportarExcel = function() {
+  const filtradas = getDespesasFiltradas().slice().sort((a, b) => new Date(b.data) - new Date(a.data));
+  if (!filtradas.length) return alert('Nenhuma despesa encontrada.');
+  const ws = XLSX.utils.json_to_sheet(filtradas.map(d => ({
+    Data:           formatarData(d.data),
+    Item:           d.item,
+    Quantidade:     d.quantidade,
+    'Valor Unitário': d.valor.toFixed(2),
+    Parte:          d.parte,
+    Total:          (d.quantidade * d.valor).toFixed(2)
+  })));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Despesas');
+  XLSX.writeFile(wb, 'despesas.xlsx');
+};
 
-      const dadosExcel = filtradas.map(d => ({
-        Data: formatarData(d.data),
-        Item: d.item,
-        Quantidade: d.quantidade,
-        "Valor Unitário": d.valor.toFixed(2),
-        Parte: d.parte,
-        Total: (d.quantidade * d.valor).toFixed(2)
-      }));
-
-      if (dadosExcel.length === 0) return alert("Nenhuma despesa encontrada.");
-      const ws = XLSX.utils.json_to_sheet(dadosExcel);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Despesas");
-      XLSX.writeFile(wb, "despesas.xlsx");
-    }
-
-    // Exportar PDF
-    window.exportarPDF = function() {
-      let filtradas = getDespesasFiltradas();
-      filtradas.sort((a, b) => new Date(b.data) - new Date(a.data));
-
-      const dadosPDF = filtradas.map(d => [
-        formatarData(d.data),
-        d.item,
-        d.quantidade,
-        "R$ " + d.valor.toFixed(2),
-        d.parte,
-        "R$ " + (d.quantidade * d.valor).toFixed(2)
-      ]);
-
-      if (dadosPDF.length === 0) return alert("Nenhuma despesa encontrada.");
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      doc.text("Relatório de Despesas de Obras", 14, 15);
-      doc.autoTable({
-        head: [["Data", "Item", "Quantidade", "Valor Unitário", "Parte", "Total"]],
-        body: dadosPDF,
-        startY: 20
-      });
-      doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY + 10);
-      doc.save("despesas.pdf");
-    }
-  </script>
+// ── exportar PDF ─────────────────────────────────────────────
+window.exportarPDF = function() {
+  const filtradas = getDespesasFiltradas().slice().sort((a, b) => new Date(b.data) - new Date(a.data));
+  if (!filtradas.length) return alert('Nenhuma despesa encontrada.');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.text('Relatório de Despesas de Obras', 14, 15);
+  doc.autoTable({
+    head: [['Data', 'Item', 'Quantidade', 'Valor Unitário', 'Parte', 'Total']],
+    body: filtradas.map(d => [
+      formatarData(d.data), d.item, d.quantidade,
+      'R$ ' + d.valor.toFixed(2), d.parte,
+      'R$ ' + (d.quantidade * d.valor).toFixed(2)
+    ]),
+    startY: 20
+  });
+  doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY + 10);
+  doc.save('despesas.pdf');
+};
+</script>
 </body>
 </html>
