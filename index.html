@@ -26,30 +26,17 @@
     .btn-add      { background: #28a745; color: white; font-weight: bold; }
     .btn-migrate  { background: #6f42c1; color: white; font-size: 0.85em; }
     #grafico-container { max-width: 600px; margin: 30px auto; }
-
-    /* overlay de carregamento */
     #loading { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35);
                z-index:999; justify-content:center; align-items:center; }
     #loading span { background:#fff; padding:18px 30px; border-radius:8px; font-size:1.1em; }
-
-    /* aviso de configuração */
-    #aviso-config { background:#fff3cd; border:1px solid #ffc107; padding:12px 16px;
-                    border-radius:6px; margin-bottom:16px; display:none; }
   </style>
 </head>
 <body>
-<div id="loading"><span>⏳ Salvando...</span></div>
+<div id="loading"><span>⏳ Aguarde...</span></div>
 
 <div class="container">
   <h1>Controle de Despesas de Obras</h1>
 
-  <div id="aviso-config">
-    ⚠️ <strong>URL do Google Apps Script não configurada.</strong>
-    Edite a variável <code>SCRIPT_URL</code> no início do JavaScript deste arquivo e insira a URL da sua implantação.
-    <a href="https://github.com/liparini/obras" target="_blank">Ver instruções no README</a>
-  </div>
-
-  <!-- Formulário -->
   <form id="form-despesa">
     <input type="date"   id="data"       required>
     <input type="text"   id="item"       placeholder="Item" required>
@@ -64,7 +51,6 @@
     <button type="submit" class="btn btn-add" id="btn-adicionar">Adicionar</button>
   </form>
 
-  <!-- Filtros -->
   <div class="filters">
     <div>
       <label>Filtrar por parte:
@@ -80,16 +66,15 @@
       <label>De: <input type="date" id="filtroDataInicio"></label>
       <label>Até: <input type="date" id="filtroDataFim"></label>
     </div>
-    <button class="btn"          onclick="atualizarTabela()">Aplicar Filtros</button>
+    <button class="btn"            onclick="atualizarTabela()">Aplicar Filtros</button>
     <button class="btn btn-export" onclick="exportarExcel()">Exportar Excel</button>
     <button class="btn btn-pdf"    onclick="exportarPDF()">Exportar PDF</button>
     <button class="btn btn-migrate" onclick="migrarDadosIniciais()" id="btn-migrar"
-            title="Importa os 45 registros do xlsx para o Google Sheets (execute apenas uma vez)">
+            title="Importa os 45 registros históricos (execute apenas uma vez)">
       📥 Migrar dados iniciais
     </button>
   </div>
 
-  <!-- Tabela -->
   <table>
     <thead>
       <tr>
@@ -102,70 +87,50 @@
 
   <div id="total">Total Gasto: R$ 0,00</div>
 
-  <!-- Gráfico -->
   <div id="grafico-container">
     <canvas id="graficoDespesas"></canvas>
   </div>
 </div>
 
 <script>
-// ============================================================
-//  ⚙️  CONFIGURE AQUI — cole a URL do seu Apps Script abaixo
-// ============================================================
+// ── URL do Apps Script ───────────────────────────────────────
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzq6FnCf2W5n3KFC9u_Wxi8T4ndksHM6qcYACepNNQMntkyawVn_r2_PuW4Eno7tjNV/exec';
-// ============================================================
 
-// ── dados históricos para migração única ────────────────────
+// ── dados para migração única ────────────────────────────────
 const DADOS_MIGRACAO = [{"data":"2026-05-20","item":"Cimento","quantidade":10,"valor":35.0,"parte":"Arrimo"},{"data":"2026-05-20","item":"Ferragem","quantidade":1,"valor":50.0,"parte":"Arrimo"},{"data":"2026-05-15","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2026-05-15","item":"Arame Cozido","quantidade":2,"valor":20.0,"parte":"Arrimo"},{"data":"2026-05-14","item":"Ferragem (4.2 e arame cozido)","quantidade":16,"valor":12.5,"parte":"Arrimo"},{"data":"2026-05-12","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Brita 1","quantidade":2,"valor":230.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Lona","quantidade":3,"valor":10.5,"parte":"Outros"},{"data":"2026-03-31","item":"Projeto","quantidade":4,"valor":2250.0,"parte":"Outros"},{"data":"2025-10-15","item":"Cimento + frete (moto)","quantidade":1,"valor":38.0,"parte":"Arrimo"},{"data":"2025-10-15","item":"Mão de obra","quantidade":3,"valor":250.0,"parte":"Pedreiro"},{"data":"2025-10-13","item":"Cimento","quantidade":5,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-10","item":"Mão de obra","quantidade":7,"valor":150.0,"parte":"Pedreiro"},{"data":"2025-10-10","item":"Mão de obra","quantidade":5,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-09","item":"Cimento","quantidade":3,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-07","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-10-07","item":"Areia","quantidade":2,"valor":160.0,"parte":"Arrimo"},{"data":"2025-10-03","item":"Mão de obra","quantidade":2,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-03","item":"Cimento","quantidade":10,"valor":32.0,"parte":"Arrimo"},{"data":"2025-10-01","item":"Tela (Doada pelo De)","quantidade":1,"valor":50.0,"parte":"Outros"},{"data":"2025-09-26","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-25","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-09-23","item":"Areia","quantidade":1,"valor":160.0,"parte":"Arrimo"},{"data":"2025-09-15","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-09-12","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-09","item":"Brita 1","quantidade":1,"valor":230.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Areia","quantidade":1,"valor":165.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Abraçadeira","quantidade":20,"valor":0.4,"parte":"Outros"},{"data":"2025-09-05","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-02","item":"Cimento","quantidade":20,"valor":31.0,"parte":"Arrimo"},{"data":"2025-09-02","item":"Bloco 20","quantidade":375,"valor":3.5,"parte":"Arrimo"},{"data":"2025-09-02","item":"Tela","quantidade":10,"valor":35.18,"parte":"Outros"},{"data":"2025-08-29","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-22","item":"Mão de obra","quantidade":5,"valor":185.0,"parte":"Pedreiro"},{"data":"2025-08-15","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-14","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Mão de obra","quantidade":3,"valor":150.0,"parte":"Pedreiro"},{"data":"2025-08-08","item":"Brita 1","quantidade":3,"valor":220.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Pedra de mão","quantidade":3,"valor":260.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Cimento","quantidade":30,"valor":32.0,"parte":"Arrimo"},{"data":"2025-02-24","item":"Retirada de Entulho","quantidade":1,"valor":2400.0,"parte":"Outros"},{"data":"2024-07-26","item":"Demolição| Muro Lateral","quantidade":1,"valor":7307.2,"parte":"Muro"},{"data":"2023-12-22","item":"Projeto (Não feito pelo arquiteto)","quantidade":1,"valor":800.0,"parte":"Outros"},{"data":"2023-11-26","item":"Trena","quantidade":1,"valor":37.63,"parte":"Outros"}];
 
-// ── estado global ────────────────────────────────────────────
+// ── estado ───────────────────────────────────────────────────
 let despesas  = [];
 let editIndex = -1;
 let chart;
 
-const form              = document.getElementById('form-despesa');
-const lista             = document.getElementById('lista-despesas');
-const totalDiv          = document.getElementById('total');
-const filtro            = document.getElementById('filtro');
-const filtroDataInicio  = document.getElementById('filtroDataInicio');
-const filtroDataFim     = document.getElementById('filtroDataFim');
-const btnAdicionar      = document.getElementById('btn-adicionar');
-const avisoConfig       = document.getElementById('aviso-config');
-const loadingEl         = document.getElementById('loading');
-const ctx               = document.getElementById('graficoDespesas').getContext('2d');
+const form             = document.getElementById('form-despesa');
+const lista            = document.getElementById('lista-despesas');
+const totalDiv         = document.getElementById('total');
+const filtro           = document.getElementById('filtro');
+const filtroDataInicio = document.getElementById('filtroDataInicio');
+const filtroDataFim    = document.getElementById('filtroDataFim');
+const btnAdicionar     = document.getElementById('btn-adicionar');
+const loadingEl        = document.getElementById('loading');
+const ctx              = document.getElementById('graficoDespesas').getContext('2d');
 
-// ── inicialização ────────────────────────────────────────────
-(async () => {
-  if (!SCRIPT_URL || SCRIPT_URL === 'COLE_AQUI_A_URL_DO_SEU_APPS_SCRIPT') {
-    avisoConfig.style.display = 'block';
-    return;
-  }
-  await carregarDespesas();
-})();
-
-// ── API helpers ──────────────────────────────────────────────
+// ── API via GET ──────────────────────────────────────────────
 function mostrarLoading(v) { loadingEl.style.display = v ? 'flex' : 'none'; }
 
-async function apiGet() {
-  const res  = await fetch(SCRIPT_URL);
+async function apiGet(params) {
+  const qs  = new URLSearchParams(params).toString();
+  const res = await fetch(SCRIPT_URL + (qs ? '?' + qs : ''));
+  if (!res.ok) throw new Error('HTTP ' + res.status);
   const json = await res.json();
-  if (json.status !== 'ok') throw new Error(json.msg);
-  return json.data;
-}
-
-async function apiPost(payload) {
-  const res  = await fetch(SCRIPT_URL, {
-    method : 'POST',
-    body   : JSON.stringify(payload)   // sem Content-Type → texto simples, sem preflight
-  });
-  const json = await res.json();
-  if (json.status !== 'ok') throw new Error(json.msg);
+  if (json.status !== 'ok') throw new Error(json.msg || 'Erro desconhecido');
+  return json;
 }
 
 async function carregarDespesas() {
   mostrarLoading(true);
   try {
-    despesas = await apiGet();
+    const json = await apiGet({ action: 'getAll' });
+    despesas   = json.data;
     atualizarTabela();
   } catch (e) {
     alert('Erro ao carregar dados: ' + e.message);
@@ -180,17 +145,17 @@ form.addEventListener('submit', async function(e) {
   const d = {
     data:       document.getElementById('data').value,
     item:       document.getElementById('item').value,
-    quantidade: parseInt(document.getElementById('quantidade').value),
-    valor:      parseFloat(document.getElementById('valor').value),
+    quantidade: document.getElementById('quantidade').value,
+    valor:      document.getElementById('valor').value,
     parte:      document.getElementById('parte').value
   };
 
   mostrarLoading(true);
   try {
     if (editIndex === -1) {
-      await apiPost({ action: 'add', ...d });
+      await apiGet({ action: 'add', ...d });
     } else {
-      await apiPost({ action: 'edit', index: editIndex, ...d });
+      await apiGet({ action: 'edit', index: editIndex, ...d });
       editIndex = -1;
       btnAdicionar.textContent = 'Adicionar';
     }
@@ -223,7 +188,7 @@ function getDespesasFiltradas() {
 
 function atualizarTabela() {
   lista.innerHTML = '';
-  let total    = 0;
+  let total       = 0;
   const filtradas = getDespesasFiltradas()
     .slice()
     .sort((a, b) => new Date(b.data) - new Date(a.data));
@@ -267,7 +232,7 @@ window.excluirDespesa = async function(index) {
   if (!confirm('Deseja realmente excluir esta despesa?')) return;
   mostrarLoading(true);
   try {
-    await apiPost({ action: 'delete', index });
+    await apiGet({ action: 'delete', index });
     await carregarDespesas();
   } catch (err) {
     alert('Erro ao excluir: ' + err.message);
@@ -275,18 +240,18 @@ window.excluirDespesa = async function(index) {
   }
 };
 
-// ── migração única ───────────────────────────────────────────
+// ── migração ─────────────────────────────────────────────────
 window.migrarDadosIniciais = async function() {
   if (!confirm(
-    `Isso vai importar ${DADOS_MIGRACAO.length} registros históricos para o Google Sheets.\n` +
-    `⚠️ Todos os dados existentes na planilha serão substituídos!\n\nContinuar?`
+    `Vai importar ${DADOS_MIGRACAO.length} registros históricos para o Google Sheets.\n` +
+    `⚠️ Dados existentes na planilha serão substituídos!\n\nContinuar?`
   )) return;
   mostrarLoading(true);
   try {
-    await apiPost({ action: 'importar', rows: DADOS_MIGRACAO });
+    await apiGet({ action: 'importar', rows: JSON.stringify(DADOS_MIGRACAO) });
     await carregarDespesas();
     document.getElementById('btn-migrar').style.display = 'none';
-    alert('✅ Migração concluída! 45 registros importados com sucesso.');
+    alert('✅ Migração concluída! 45 registros importados.');
   } catch (err) {
     alert('Erro na migração: ' + err.message);
     mostrarLoading(false);
@@ -329,12 +294,9 @@ window.exportarExcel = function() {
   const filtradas = getDespesasFiltradas().slice().sort((a, b) => new Date(b.data) - new Date(a.data));
   if (!filtradas.length) return alert('Nenhuma despesa encontrada.');
   const ws = XLSX.utils.json_to_sheet(filtradas.map(d => ({
-    Data:           formatarData(d.data),
-    Item:           d.item,
-    Quantidade:     d.quantidade,
-    'Valor Unitário': d.valor.toFixed(2),
-    Parte:          d.parte,
-    Total:          (d.quantidade * d.valor).toFixed(2)
+    Data: formatarData(d.data), Item: d.item, Quantidade: d.quantidade,
+    'Valor Unitário': d.valor.toFixed(2), Parte: d.parte,
+    Total: (d.quantidade * d.valor).toFixed(2)
   })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Despesas');
@@ -360,6 +322,9 @@ window.exportarPDF = function() {
   doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY + 10);
   doc.save('despesas.pdf');
 };
+
+// ── iniciar ──────────────────────────────────────────────────
+carregarDespesas();
 </script>
 </body>
 </html>
