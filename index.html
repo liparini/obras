@@ -3,138 +3,607 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Controle de Despesas de Obras</title>
+  <title>Controle de Despesas · Obra</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
-    h1   { text-align: center; }
-    .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,.1); }
-    form { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
-    input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-    #total { margin-top: 15px; font-weight: bold; font-size: 1.2em; text-align: right; }
-    .filters { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center; }
-    .btn         { padding: 5px 10px; margin: 2px; border: none; border-radius: 4px; cursor: pointer; }
-    .btn-edit    { background: #ffc107; color: black; }
-    .btn-delete  { background: #dc3545; color: white; }
-    .btn-export  { background: #28a745; color: white; }
-    .btn-pdf     { background: #007bff; color: white; }
-    .btn-add     { background: #28a745; color: white; font-weight: bold; }
-    .btn-migrate { background: #6f42c1; color: white; font-size: .85em; }
-    .btn-test    { background: #17a2b8; color: white; font-size: .85em; }
-    #grafico-container { max-width: 600px; margin: 30px auto; }
-    #loading { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35);
-               z-index:999; justify-content:center; align-items:center; }
-    #loading span { background:#fff; padding:18px 30px; border-radius:8px; font-size:1.1em; }
-    #status-bar { padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: .9em; display: none; }
-    .status-ok   { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-    .status-err  { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-    .status-warn { background: #fff3cd; color: #856404; border: 1px solid #ffc107; }
+    :root {
+      --bg:        #0f1117;
+      --surface:   #181c27;
+      --surface2:  #1e2335;
+      --border:    rgba(255,255,255,0.08);
+      --border2:   rgba(255,255,255,0.14);
+      --text:      #f0f2ff;
+      --muted:     #8b91a8;
+      --accent:    #f5a623;
+      --accent2:   #ff6b35;
+      --green:     #3ecf8e;
+      --red:       #ef4444;
+      --blue:      #4f8ef7;
+      --radius:    12px;
+      --radius-sm: 8px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Sora', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── header ── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-brand { display: flex; align-items: center; gap: 12px; }
+    .header-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .header h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+    .header-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .header-actions { display: flex; gap: 8px; }
+
+    /* ── status bar ── */
+    .status-bar {
+      margin: 20px 32px 0;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      display: none;
+    }
+    .status-ok   { background: rgba(62,207,142,0.12); color: #3ecf8e; border: 1px solid rgba(62,207,142,0.25); }
+    .status-err  { background: rgba(239,68,68,0.12);  color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
+    .status-warn { background: rgba(245,166,35,0.12); color: #f5a623; border: 1px solid rgba(245,166,35,0.25); }
+
+    /* ── main layout ── */
+    .main { padding: 24px 32px 48px; max-width: 1400px; margin: 0 auto; }
+
+    /* ── KPI cards ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s;
+    }
+    .kpi-card:hover { border-color: var(--border2); }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+    .kpi-card.accent::before  { background: var(--accent); }
+    .kpi-card.green::before   { background: var(--green); }
+    .kpi-card.blue::before    { background: var(--blue); }
+    .kpi-card.red::before     { background: var(--red); }
+    .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+    .kpi-value { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500; color: var(--text); }
+    .kpi-sub   { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ── content grid ── */
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+      align-items: start;
+    }
+    @media (max-width: 1100px) { .content-grid { grid-template-columns: 1fr; } }
+
+    /* ── panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-title { font-size: 13px; font-weight: 600; letter-spacing: 0.1px; }
+    .panel-body { padding: 20px; }
+
+    /* ── form ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr 90px 120px 150px auto;
+      gap: 10px;
+      align-items: end;
+    }
+    @media (max-width: 900px) {
+      .form-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      font-family: 'Sora', sans-serif;
+      font-size: 13px;
+      outline: none;
+      transition: border-color .2s;
+      appearance: none;
+    }
+    .form-group input:focus,
+    .form-group select:focus { border-color: var(--accent); }
+    .form-group input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1) opacity(0.5); }
+
+    /* ── buttons ── */
+    .btn {
+      font-family: 'Sora', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 9px 16px;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      transition: all .18s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary  { background: var(--accent);  color: #111; }
+    .btn-primary:hover  { background: #fdb43a; }
+    .btn-success  { background: rgba(62,207,142,.15); color: var(--green); border: 1px solid rgba(62,207,142,.25); }
+    .btn-success:hover  { background: rgba(62,207,142,.25); }
+    .btn-info     { background: rgba(79,142,247,.15); color: var(--blue);  border: 1px solid rgba(79,142,247,.25); }
+    .btn-info:hover     { background: rgba(79,142,247,.25); }
+    .btn-ghost    { background: rgba(255,255,255,.06); color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover    { background: rgba(255,255,255,.1); color: var(--text); }
+    .btn-danger   { background: rgba(239,68,68,.15);  color: var(--red);   border: 1px solid rgba(239,68,68,.25); }
+    .btn-danger:hover   { background: rgba(239,68,68,.25); }
+    .btn-warn     { background: rgba(245,166,35,.15); color: var(--accent); border: 1px solid rgba(245,166,35,.25); }
+    .btn-warn:hover     { background: rgba(245,166,35,.25); }
+    .btn-purple   { background: rgba(168,85,247,.15); color: #c084fc; border: 1px solid rgba(168,85,247,.25); }
+    .btn-purple:hover   { background: rgba(168,85,247,.25); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-icon { padding: 7px; }
+
+    /* ── filters ── */
+    .filters-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      padding: 16px 20px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .filters-row .form-group { flex: 1; min-width: 120px; }
+    .filters-row select,
+    .filters-row input {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 7px 10px;
+      font-family: 'Sora', sans-serif;
+      font-size: 12px;
+      outline: none;
+      width: 100%;
+    }
+    .filters-row select:focus,
+    .filters-row input:focus { border-color: var(--accent); }
+
+    /* ── table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead tr { border-bottom: 1px solid var(--border2); }
+    th {
+      padding: 11px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    tbody tr:hover { background: rgba(255,255,255,.025); }
+    tbody tr:last-child td { border-bottom: none; }
+    td.mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .badge-arrimo    { background: rgba(245,166,35,.15); color: #f5a623; }
+    .badge-pedreiro  { background: rgba(62,207,142,.12); color: #3ecf8e; }
+    .badge-outros    { background: rgba(139,145,168,.12); color: #8b91a8; }
+    .badge-muro      { background: rgba(168,85,247,.12); color: #c084fc; }
+    .badge-fundacao  { background: rgba(79,142,247,.12); color: #4f8ef7; }
+    .badge-estrutura { background: rgba(255,107,53,.12); color: #ff6b35; }
+    .badge-alvenaria { background: rgba(251,191,36,.12); color: #fbbf24; }
+    .badge-acabamento{ background: rgba(236,72,153,.12); color: #f472b6; }
+    .badge-instalacoes{ background: rgba(20,184,166,.12); color: #2dd4bf; }
+
+    /* ── total row ── */
+    .total-row {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border2);
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface2);
+    }
+    .total-label { font-size: 13px; color: var(--muted); }
+    .total-value { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 500; color: var(--accent); }
+
+    /* ── right column ── */
+    .right-col { display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── chart ── */
+    #graficoDespesas { max-height: 260px; }
+
+    /* ── breakdown list ── */
+    .breakdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .breakdown-item:last-child { border-bottom: none; }
+    .breakdown-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .breakdown-parte { flex: 1; color: var(--text); }
+    .breakdown-val { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
+    .breakdown-pct { font-size: 11px; color: var(--muted); min-width: 40px; text-align: right; }
+    .breakdown-bar-wrap { width: 60px; height: 4px; background: var(--border2); border-radius: 2px; }
+    .breakdown-bar { height: 4px; border-radius: 2px; background: var(--accent); }
+
+    /* ── loading overlay ── */
+    #loading {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      z-index: 999;
+      justify-content: center;
+      align-items: center;
+    }
+    .loading-box {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: var(--radius);
+      padding: 24px 32px;
+      text-align: center;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-box p { font-size: 13px; color: var(--muted); }
+
+    /* ── empty state ── */
+    .empty-state {
+      padding: 48px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .empty-state div { font-size: 32px; margin-bottom: 8px; }
+    .empty-state p { font-size: 13px; }
+
+    /* ── action strip ── */
+    .action-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
-<div id="loading"><span>⏳ Aguarde...</span></div>
 
-<div class="container">
-  <h1>Controle de Despesas de Obras</h1>
-
-  <div id="status-bar"></div>
-
-  <form id="form-despesa">
-    <input type="date"   id="data"       required>
-    <input type="text"   id="item"       placeholder="Item" required>
-    <input type="number" id="quantidade" placeholder="Quantidade" min="1" required>
-    <input type="number" id="valor"      placeholder="Valor (R$)" step="0.01" required>
-    <select id="parte" required>
-      <option value="">Parte da Obra</option>
-      <option>Fundação</option><option>Estrutura</option><option>Alvenaria</option>
-      <option>Acabamento</option><option>Instalações</option><option>Pedreiro</option>
-      <option>Arrimo</option><option>Muro</option><option>Outros</option>
-    </select>
-    <button type="submit" class="btn btn-add" id="btn-adicionar">Adicionar</button>
-  </form>
-
-  <div class="filters">
-    <div>
-      <label>Filtrar por parte:
-        <select id="filtro">
-          <option value="Todas">Todas</option>
-          <option>Fundação</option><option>Estrutura</option><option>Alvenaria</option>
-          <option>Acabamento</option><option>Instalações</option><option>Pedreiro</option>
-          <option>Arrimo</option><option>Muro</option><option>Outros</option>
-        </select>
-      </label>
-    </div>
-    <div>
-      <label>De: <input type="date" id="filtroDataInicio"></label>
-      <label>Até: <input type="date" id="filtroDataFim"></label>
-    </div>
-    <button class="btn"            onclick="atualizarTabela()">Aplicar Filtros</button>
-    <button class="btn btn-export" onclick="exportarExcel()">Exportar Excel</button>
-    <button class="btn btn-pdf"    onclick="exportarPDF()">Exportar PDF</button>
-    <button class="btn btn-test"   onclick="testarConexao()">🔍 Testar conexão</button>
-    <button class="btn btn-migrate" id="btn-migrar" onclick="migrarDadosIniciais()"
-            title="Importa os 45 registros históricos (execute apenas uma vez)">
-      📥 Migrar dados iniciais
-    </button>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Data</th><th>Item</th><th>Quantidade</th>
-        <th>Valor Unitário</th><th>Parte</th><th>Total</th><th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="lista-despesas"></tbody>
-  </table>
-
-  <div id="total">Total Gasto: R$ 0,00</div>
-
-  <div id="grafico-container">
-    <canvas id="graficoDespesas"></canvas>
+<!-- loading -->
+<div id="loading">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <p>Aguarde…</p>
   </div>
 </div>
+
+<!-- header -->
+<div class="header">
+  <div class="header-brand">
+    <div class="header-icon">🏗️</div>
+    <div>
+      <div class="header h1" style="font-size:15px;font-weight:600;">Controle de Despesas</div>
+      <div class="header-sub">Gestão financeira da obra</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost btn-sm" onclick="testarConexao()">🔍 Testar conexão</button>
+    <button class="btn btn-purple btn-sm" id="btn-migrar" onclick="migrarDadosIniciais()" title="Execute apenas uma vez">📥 Migrar dados</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <div id="status-bar" class="status-bar"></div>
+
+  <!-- KPI -->
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="kpi-card accent">
+      <div class="kpi-label">Total Gasto</div>
+      <div class="kpi-value" id="kpi-total">R$ 0</div>
+      <div class="kpi-sub" id="kpi-sub-registros">0 registros</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Maior Categoria</div>
+      <div class="kpi-value" id="kpi-maior-cat" style="font-size:14px;padding-top:4px;">—</div>
+      <div class="kpi-sub" id="kpi-maior-val">—</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Último Lançamento</div>
+      <div class="kpi-value" id="kpi-ultimo" style="font-size:14px;padding-top:4px;">—</div>
+      <div class="kpi-sub" id="kpi-ultimo-val">—</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Item Mais Caro</div>
+      <div class="kpi-value" id="kpi-caro" style="font-size:13px;padding-top:4px;">—</div>
+      <div class="kpi-sub" id="kpi-caro-val">—</div>
+    </div>
+  </div>
+
+  <!-- content -->
+  <div class="content-grid">
+
+    <!-- left: form + table -->
+    <div>
+
+      <!-- add form -->
+      <div class="panel" style="margin-bottom:20px;">
+        <div class="panel-header">
+          <span class="panel-title" id="form-title">✦ Nova Despesa</span>
+          <button class="btn btn-ghost btn-sm" id="btn-cancelar" onclick="cancelarEdicao()" style="display:none;">Cancelar</button>
+        </div>
+        <div class="panel-body">
+          <form id="form-despesa">
+            <div class="form-grid">
+              <div class="form-group">
+                <label>Data</label>
+                <input type="date" id="data" required>
+              </div>
+              <div class="form-group">
+                <label>Item / Descrição</label>
+                <input type="text" id="item" placeholder="Ex: Cimento CP-II" required>
+              </div>
+              <div class="form-group">
+                <label>Qtd</label>
+                <input type="number" id="quantidade" placeholder="1" min="1" step="0.01" required>
+              </div>
+              <div class="form-group">
+                <label>Valor Unit. (R$)</label>
+                <input type="number" id="valor" placeholder="0,00" step="0.01" required>
+              </div>
+              <div class="form-group">
+                <label>Parte da Obra</label>
+                <select id="parte" required>
+                  <option value="">Selecionar…</option>
+                  <option>Fundação</option><option>Estrutura</option><option>Alvenaria</option>
+                  <option>Acabamento</option><option>Instalações</option><option>Pedreiro</option>
+                  <option>Arrimo</option><option>Muro</option><option>Outros</option>
+                </select>
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end;">
+                <button type="submit" class="btn btn-primary" id="btn-adicionar" style="width:100%;">
+                  <span id="btn-label">＋ Adicionar</span>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- table panel -->
+      <div class="panel">
+        <div class="filters-row">
+          <div class="form-group" style="min-width:140px;">
+            <label>Parte da Obra</label>
+            <select id="filtro">
+              <option value="Todas">Todas as partes</option>
+              <option>Fundação</option><option>Estrutura</option><option>Alvenaria</option>
+              <option>Acabamento</option><option>Instalações</option><option>Pedreiro</option>
+              <option>Arrimo</option><option>Muro</option><option>Outros</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width:130px;">
+            <label>Data inicial</label>
+            <input type="date" id="filtroDataInicio">
+          </div>
+          <div class="form-group" style="min-width:130px;">
+            <label>Data final</label>
+            <input type="date" id="filtroDataFim">
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="atualizarTabela()" style="margin-bottom:0;">Filtrar</button>
+          <button class="btn btn-ghost btn-sm" onclick="limparFiltros()" style="margin-bottom:0;">Limpar</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Item</th>
+                <th style="text-align:right;">Qtd</th>
+                <th style="text-align:right;">Valor Unit.</th>
+                <th>Parte</th>
+                <th style="text-align:right;">Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="lista-despesas">
+              <tr><td colspan="7"><div class="empty-state"><div>⏳</div><p>Carregando…</p></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="total-row">
+          <span class="total-label">Total filtrado:</span>
+          <span class="total-value" id="total-value">R$ 0,00</span>
+        </div>
+
+        <div class="action-strip">
+          <button class="btn btn-success btn-sm" onclick="exportarExcel()">📊 Exportar Excel</button>
+          <button class="btn btn-info    btn-sm" onclick="exportarPDF()">📄 Exportar PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- right: chart + breakdown -->
+    <div class="right-col">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Distribuição por Parte</span>
+        </div>
+        <div class="panel-body" style="padding:16px;">
+          <canvas id="graficoDespesas"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Detalhamento</span>
+        </div>
+        <div class="panel-body" style="padding:16px 20px;" id="breakdown-list">
+          <p style="color:var(--muted);font-size:13px;">Sem dados</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content-grid -->
+</div><!-- /main -->
 
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzq6FnCf2W5n3KFC9u_Wxi8T4ndksHM6qcYACepNNQMntkyawVn_r2_PuW4Eno7tjNV/exec';
 
-const DADOS_MIGRACAO = [{"data":"2026-05-20","item":"Cimento","quantidade":10,"valor":35.0,"parte":"Arrimo"},{"data":"2026-05-20","item":"Ferragem","quantidade":1,"valor":50.0,"parte":"Arrimo"},{"data":"2026-05-15","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2026-05-15","item":"Arame Cozido","quantidade":2,"valor":20.0,"parte":"Arrimo"},{"data":"2026-05-14","item":"Ferragem (4.2 e arame cozido)","quantidade":16,"valor":12.5,"parte":"Arrimo"},{"data":"2026-05-12","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Brita 1","quantidade":2,"valor":230.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Lona","quantidade":3,"valor":10.5,"parte":"Outros"},{"data":"2026-03-31","item":"Projeto","quantidade":4,"valor":2250.0,"parte":"Outros"},{"data":"2025-10-15","item":"Cimento + frete (moto)","quantidade":1,"valor":38.0,"parte":"Arrimo"},{"data":"2025-10-15","item":"Mão de obra","quantidade":3,"valor":250.0,"parte":"Pedreiro"},{"data":"2025-10-13","item":"Cimento","quantidade":5,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-10","item":"Mão de obra","quantidade":7,"valor":150.0,"parte":"Pedreiro"},{"data":"2025-10-10","item":"Mão de obra","quantidade":5,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-09","item":"Cimento","quantidade":3,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-07","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-10-07","item":"Areia","quantidade":2,"valor":160.0,"parte":"Arrimo"},{"data":"2025-10-03","item":"Mão de obra","quantidade":2,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-03","item":"Cimento","quantidade":10,"valor":32.0,"parte":"Arrimo"},{"data":"2025-10-01","item":"Tela (Doada pelo De)","quantidade":1,"valor":50.0,"parte":"Outros"},{"data":"2025-09-26","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-25","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-09-23","item":"Areia","quantidade":1,"valor":160.0,"parte":"Arrimo"},{"data":"2025-09-15","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-09-12","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-09","item":"Brita 1","quantidade":1,"valor":230.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Areia","quantidade":1,"valor":165.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Abraçadeira","quantidade":20,"valor":0.4,"parte":"Outros"},{"data":"2025-09-05","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-02","item":"Cimento","quantidade":20,"valor":31.0,"parte":"Arrimo"},{"data":"2025-09-02","item":"Bloco 20","quantidade":375,"valor":3.5,"parte":"Arrimo"},{"data":"2025-09-02","item":"Tela","quantidade":10,"valor":35.18,"parte":"Outros"},{"data":"2025-08-29","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-22","item":"Mão de obra","quantidade":5,"valor":185.0,"parte":"Pedreiro"},{"data":"2025-08-15","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-14","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Mão de obra","quantidade":3,"valor":150.0,"parte":"Pedreiro"},{"data":"2025-08-08","item":"Brita 1","quantidade":3,"valor":220.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Pedra de mão","quantidade":3,"valor":260.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Cimento","quantidade":30,"valor":32.0,"parte":"Arrimo"},{"data":"2025-02-24","item":"Retirada de Entulho","quantidade":1,"valor":2400.0,"parte":"Outros"},{"data":"2024-07-26","item":"Demolição| Muro Lateral","quantidade":1,"valor":7307.2,"parte":"Muro"},{"data":"2023-12-22","item":"Projeto (Não feito pelo arquiteto)","quantidade":1,"valor":800.0,"parte":"Outros"},{"data":"2023-11-26","item":"Trena","quantidade":1,"valor":37.63,"parte":"Outros"}];
+const DADOS_MIGRACAO = [{"data":"2026-05-20","item":"Cimento","quantidade":10,"valor":35.0,"parte":"Arrimo"},{"data":"2026-05-20","item":"Ferragem","quantidade":1,"valor":50.0,"parte":"Arrimo"},{"data":"2026-05-15","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2026-05-15","item":"Arame Cozido","quantidade":2,"valor":20.0,"parte":"Arrimo"},{"data":"2026-05-14","item":"Ferragem (4.2 e arame cozido)","quantidade":16,"valor":12.5,"parte":"Arrimo"},{"data":"2026-05-12","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Brita 1","quantidade":2,"valor":230.0,"parte":"Arrimo"},{"data":"2026-05-12","item":"Lona","quantidade":3,"valor":10.5,"parte":"Outros"},{"data":"2026-03-31","item":"Projeto","quantidade":4,"valor":2250.0,"parte":"Outros"},{"data":"2025-10-15","item":"Cimento + frete (moto)","quantidade":1,"valor":38.0,"parte":"Arrimo"},{"data":"2025-10-15","item":"Mão de obra","quantidade":3,"valor":250.0,"parte":"Pedreiro"},{"data":"2025-10-13","item":"Cimento","quantidade":5,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-10","item":"Mão de obra","quantidade":7,"valor":150.0,"parte":"Pedreiro"},{"data":"2025-10-10","item":"Mão de obra","quantidade":5,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-09","item":"Cimento","quantidade":3,"valor":34.5,"parte":"Arrimo"},{"data":"2025-10-07","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-10-07","item":"Areia","quantidade":2,"valor":160.0,"parte":"Arrimo"},{"data":"2025-10-03","item":"Mão de obra","quantidade":2,"valor":50.0,"parte":"Pedreiro"},{"data":"2025-10-03","item":"Cimento","quantidade":10,"valor":32.0,"parte":"Arrimo"},{"data":"2025-10-01","item":"Tela (Doada pelo De)","quantidade":1,"valor":50.0,"parte":"Outros"},{"data":"2025-09-26","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-25","item":"Brita 1","quantidade":1,"valor":220.0,"parte":"Arrimo"},{"data":"2025-09-23","item":"Areia","quantidade":1,"valor":160.0,"parte":"Arrimo"},{"data":"2025-09-15","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-09-12","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-09","item":"Brita 1","quantidade":1,"valor":230.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Areia","quantidade":1,"valor":165.0,"parte":"Arrimo"},{"data":"2025-09-09","item":"Abraçadeira","quantidade":20,"valor":0.4,"parte":"Outros"},{"data":"2025-09-05","item":"Mão de obra","quantidade":4,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-09-02","item":"Cimento","quantidade":20,"valor":31.0,"parte":"Arrimo"},{"data":"2025-09-02","item":"Bloco 20","quantidade":375,"valor":3.5,"parte":"Arrimo"},{"data":"2025-09-02","item":"Tela","quantidade":10,"valor":35.18,"parte":"Outros"},{"data":"2025-08-29","item":"Mão de obra","quantidade":3,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-22","item":"Mão de obra","quantidade":5,"valor":185.0,"parte":"Pedreiro"},{"data":"2025-08-15","item":"Mão de obra","quantidade":5,"valor":200.0,"parte":"Pedreiro"},{"data":"2025-08-14","item":"Bitorneira","quantidade":1,"valor":300.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Mão de obra","quantidade":3,"valor":150.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Brita 1","quantidade":3,"valor":220.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Areia","quantidade":3,"valor":160.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Pedra de mão","quantidade":3,"valor":260.0,"parte":"Arrimo"},{"data":"2025-08-08","item":"Cimento","quantidade":30,"valor":32.0,"parte":"Arrimo"},{"data":"2025-02-24","item":"Retirada de Entulho","quantidade":1,"valor":2400.0,"parte":"Outros"},{"data":"2024-07-26","item":"Demolição| Muro Lateral","quantidade":1,"valor":7307.2,"parte":"Muro"},{"data":"2023-12-22","item":"Projeto (Não feito pelo arquiteto)","quantidade":1,"valor":800.0,"parte":"Outros"},{"data":"2023-11-26","item":"Trena","quantidade":1,"valor":37.63,"parte":"Outros"}];
 
 let despesas  = [];
 let editIndex = -1;
 let chart;
 
-const form             = document.getElementById('form-despesa');
-const lista            = document.getElementById('lista-despesas');
-const totalDiv         = document.getElementById('total');
-const filtro           = document.getElementById('filtro');
-const filtroDataInicio = document.getElementById('filtroDataInicio');
-const filtroDataFim    = document.getElementById('filtroDataFim');
-const btnAdicionar     = document.getElementById('btn-adicionar');
-const loadingEl        = document.getElementById('loading');
-const statusBar        = document.getElementById('status-bar');
-const ctx              = document.getElementById('graficoDespesas').getContext('2d');
+const BADGE_MAP = {
+  'Arrimo':     'badge-arrimo',
+  'Pedreiro':   'badge-pedreiro',
+  'Outros':     'badge-outros',
+  'Muro':       'badge-muro',
+  'Fundação':   'badge-fundacao',
+  'Estrutura':  'badge-estrutura',
+  'Alvenaria':  'badge-alvenaria',
+  'Acabamento': 'badge-acabamento',
+  'Instalações':'badge-instalacoes',
+};
 
-// ── status bar ───────────────────────────────────────────────
+const CHART_COLORS = [
+  '#f5a623','#3ecf8e','#4f8ef7','#ff6b35','#c084fc',
+  '#fbbf24','#2dd4bf','#f472b6','#a78bfa'
+];
+
+/* ── date helpers ── */
+function parseDataISO(str) {
+  if (!str) return null;
+  // handles "2026-05-23", "2026-05-23T03:00:00.000Z", etc.
+  const clean = typeof str === 'string' ? str.split('T')[0] : str;
+  const [y, m, d] = String(clean).split('-');
+  if (!y || !m || !d) return null;
+  return new Date(Number(y), Number(m) - 1, Number(d));
+}
+
+function formatarData(str) {
+  const d = parseDataISO(str);
+  if (!d || isNaN(d)) return str;
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function dataStr(str) {
+  // returns "YYYY-MM-DD" for comparison
+  if (!str) return '';
+  return typeof str === 'string' ? str.split('T')[0] : String(str);
+}
+
+function brl(v) {
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+/* ── status bar ── */
+const statusBar = document.getElementById('status-bar');
 function statusMostrar(msg, tipo) {
-  statusBar.textContent  = msg;
-  statusBar.className    = 'status-' + tipo;
+  statusBar.textContent = msg;
+  statusBar.className = 'status-bar status-' + tipo;
   statusBar.style.display = 'block';
 }
 function statusOcultar() { statusBar.style.display = 'none'; }
 
-// ── JSONP ────────────────────────────────────────────────────
+/* ── loading ── */
+function mostrarLoading(v) {
+  document.getElementById('loading').style.display = v ? 'flex' : 'none';
+}
+
+/* ── JSONP ── */
 function jsonp(params, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
-    const cbName  = '_cb' + Date.now() + Math.floor(Math.random() * 9999);
-    const qs      = new URLSearchParams({ ...params, callback: cbName }).toString();
-    const script  = document.createElement('script');
-    const timer   = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, timeoutMs);
+    const cbName = '_cb' + Date.now() + Math.floor(Math.random() * 9999);
+    const qs     = new URLSearchParams({ ...params, callback: cbName }).toString();
+    const script = document.createElement('script');
+    const timer  = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, timeoutMs);
 
     function cleanup() {
       clearTimeout(timer);
@@ -142,43 +611,36 @@ function jsonp(params, timeoutMs = 12000) {
       script.parentNode && script.parentNode.removeChild(script);
     }
 
-    window[cbName] = (data) => {
+    window[cbName] = data => {
       cleanup();
       data.status === 'ok' ? resolve(data) : reject(new Error(data.msg || 'Erro no servidor'));
     };
 
-    script.onerror = () => {
-      cleanup();
-      reject(new Error('onerror'));
-    };
-
+    script.onerror = () => { cleanup(); reject(new Error('onerror')); };
     script.src = SCRIPT_URL + '?' + qs;
     document.body.appendChild(script);
   });
 }
 
-// ── diagnóstico ──────────────────────────────────────────────
 window.testarConexao = function() {
-  const url = SCRIPT_URL + '?action=getAll&callback=testeManual';
-  statusMostrar('🔍 Testando… Abrindo a URL do Apps Script numa nova aba. Se abrir uma tela de LOGIN do Google, você precisa reconfigurar o acesso da implantação para "Qualquer pessoa".  Se mostrar JSON, a implantação está OK mas pode precisar de nova versão.', 'warn');
-  window.open(url, '_blank');
+  statusMostrar('🔍 Abrindo URL do Apps Script em nova aba. Se pedir login → reconfigure a implantação para "Qualquer pessoa".', 'warn');
+  window.open(SCRIPT_URL + '?action=getAll&callback=testeManual', '_blank');
 };
 
-function mostrarLoading(v) { loadingEl.style.display = v ? 'flex' : 'none'; }
-
+/* ── load ── */
 async function carregarDespesas() {
   mostrarLoading(true);
   statusOcultar();
   try {
     const res = await jsonp({ action: 'getAll' });
-    despesas  = res.data;
+    despesas = res.data;
     atualizarTabela();
     statusMostrar('✅ Conectado ao Google Sheets — ' + despesas.length + ' registros carregados.', 'ok');
   } catch (e) {
     const dica = e.message === 'timeout'
       ? 'Tempo esgotado. Verifique se o Apps Script está publicado corretamente.'
       : e.message === 'onerror'
-      ? 'Falha de rede ou acesso bloqueado. Clique em "🔍 Testar conexão" para diagnosticar.'
+      ? 'Falha de rede. Clique em "Testar conexão" para diagnosticar.'
       : e.message;
     statusMostrar('❌ Erro ao carregar: ' + dica, 'err');
   } finally {
@@ -186,7 +648,8 @@ async function carregarDespesas() {
   }
 }
 
-form.addEventListener('submit', async function(e) {
+/* ── form submit ── */
+document.getElementById('form-despesa').addEventListener('submit', async function(e) {
   e.preventDefault();
   const d = {
     data:       document.getElementById('data').value,
@@ -202,9 +665,11 @@ form.addEventListener('submit', async function(e) {
     } else {
       await jsonp({ action: 'edit', index: editIndex, ...d });
       editIndex = -1;
-      btnAdicionar.textContent = 'Adicionar';
+      document.getElementById('btn-label').textContent = '＋ Adicionar';
+      document.getElementById('form-title').textContent = '✦ Nova Despesa';
+      document.getElementById('btn-cancelar').style.display = 'none';
     }
-    form.reset();
+    this.reset();
     await carregarDespesas();
   } catch (err) {
     alert('Erro ao salvar: ' + err.message);
@@ -212,57 +677,174 @@ form.addEventListener('submit', async function(e) {
   }
 });
 
-function formatarData(iso) {
-  if (!iso) return '';
-  const [a, m, d] = iso.split('-');
-  return `${d}-${m}-${a}`;
+function cancelarEdicao() {
+  editIndex = -1;
+  document.getElementById('form-despesa').reset();
+  document.getElementById('btn-label').textContent = '＋ Adicionar';
+  document.getElementById('form-title').textContent = '✦ Nova Despesa';
+  document.getElementById('btn-cancelar').style.display = 'none';
 }
 
+/* ── filters ── */
 function getDespesasFiltradas() {
-  const fp    = filtro.value;
-  const inicio = filtroDataInicio.value ? new Date(filtroDataInicio.value) : null;
-  const fim    = filtroDataFim.value    ? new Date(filtroDataFim.value)    : null;
+  const fp     = document.getElementById('filtro').value;
+  const inicio = document.getElementById('filtroDataInicio').value;
+  const fim    = document.getElementById('filtroDataFim').value;
   return despesas.filter(d => {
-    const dt = new Date(d.data);
-    if (inicio && dt < inicio) return false;
-    if (fim    && dt > fim)    return false;
+    const ds = dataStr(d.data);
+    if (inicio && ds < inicio) return false;
+    if (fim    && ds > fim)    return false;
     return fp === 'Todas' || d.parte === fp;
   });
 }
 
+function limparFiltros() {
+  document.getElementById('filtro').value = 'Todas';
+  document.getElementById('filtroDataInicio').value = '';
+  document.getElementById('filtroDataFim').value = '';
+  atualizarTabela();
+}
+
+/* ── table ── */
 function atualizarTabela() {
+  const lista     = document.getElementById('lista-despesas');
+  const totalEl   = document.getElementById('total-value');
   lista.innerHTML = '';
   let total       = 0;
+
   const filtradas = getDespesasFiltradas()
-    .slice().sort((a, b) => new Date(b.data) - new Date(a.data));
+    .slice().sort((a, b) => dataStr(b.data).localeCompare(dataStr(a.data)));
+
+  if (!filtradas.length) {
+    lista.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div>📭</div><p>Nenhuma despesa encontrada</p></div></td></tr>';
+    totalEl.textContent = brl(0);
+    atualizarKPI([]);
+    atualizarGrafico([]);
+    return;
+  }
 
   filtradas.forEach(d => {
-    const sub = d.quantidade * d.valor;
+    const sub = Number(d.quantidade) * Number(d.valor);
     total += sub;
-    const idx = despesas.indexOf(d);
-    const tr  = document.createElement('tr');
+    const idx  = despesas.indexOf(d);
+    const badgeClass = BADGE_MAP[d.parte] || 'badge-outros';
+    const tr   = document.createElement('tr');
     tr.innerHTML = `
-      <td>${formatarData(d.data)}</td><td>${d.item}</td><td>${d.quantidade}</td>
-      <td>R$ ${d.valor.toFixed(2)}</td><td>${d.parte}</td><td>R$ ${sub.toFixed(2)}</td>
-      <td>
-        <button class="btn btn-edit"   onclick="editarDespesa(${idx})">Editar</button>
-        <button class="btn btn-delete" onclick="excluirDespesa(${idx})">Excluir</button>
+      <td class="mono" style="white-space:nowrap;">${formatarData(d.data)}</td>
+      <td>${d.item}</td>
+      <td class="mono" style="text-align:right;">${Number(d.quantidade).toLocaleString('pt-BR')}</td>
+      <td class="mono" style="text-align:right;">${brl(d.valor)}</td>
+      <td><span class="badge ${badgeClass}">${d.parte}</span></td>
+      <td class="mono" style="text-align:right;font-weight:500;">${brl(sub)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-warn btn-sm" onclick="editarDespesa(${idx})">Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="excluirDespesa(${idx})">Excluir</button>
       </td>`;
     lista.appendChild(tr);
   });
-  totalDiv.textContent = 'Total Gasto: R$ ' + total.toFixed(2);
-  atualizarGrafico();
+
+  totalEl.textContent = brl(total);
+  atualizarKPI(filtradas, total);
+  atualizarGrafico(filtradas);
 }
 
+/* ── KPI ── */
+function atualizarKPI(filtradas, total) {
+  total = total || 0;
+  document.getElementById('kpi-total').textContent = brl(total);
+  document.getElementById('kpi-sub-registros').textContent = filtradas.length + ' registro' + (filtradas.length !== 1 ? 's' : '');
+
+  if (!filtradas.length) {
+    ['kpi-maior-cat','kpi-maior-val','kpi-ultimo','kpi-ultimo-val','kpi-caro','kpi-caro-val']
+      .forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+
+  // maior categoria
+  const agrupado = {};
+  filtradas.forEach(d => { agrupado[d.parte] = (agrupado[d.parte] || 0) + Number(d.quantidade) * Number(d.valor); });
+  const [maiorCat, maiorVal] = Object.entries(agrupado).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById('kpi-maior-cat').textContent = maiorCat;
+  document.getElementById('kpi-maior-val').textContent = brl(maiorVal) + ' · ' + ((maiorVal/total)*100).toFixed(1) + '%';
+
+  // último lançamento
+  const sorted = filtradas.slice().sort((a,b) => dataStr(b.data).localeCompare(dataStr(a.data)));
+  const ult = sorted[0];
+  document.getElementById('kpi-ultimo').textContent = formatarData(ult.data);
+  document.getElementById('kpi-ultimo-val').textContent = ult.item.substring(0, 28);
+
+  // item mais caro (total unitario)
+  const caro = filtradas.slice().sort((a,b) => Number(b.quantidade)*Number(b.valor) - Number(a.quantidade)*Number(a.valor))[0];
+  document.getElementById('kpi-caro').textContent = caro.item.substring(0, 24);
+  document.getElementById('kpi-caro-val').textContent = brl(Number(caro.quantidade) * Number(caro.valor));
+}
+
+/* ── chart + breakdown ── */
+function atualizarGrafico(filtradas) {
+  filtradas = filtradas || getDespesasFiltradas();
+  const agrupado = {};
+  filtradas.forEach(d => { agrupado[d.parte] = (agrupado[d.parte] || 0) + Number(d.quantidade)*Number(d.valor); });
+  const ordenadas = Object.entries(agrupado).sort((a,b) => b[1]-a[1]);
+  const total = ordenadas.reduce((s, e) => s + e[1], 0);
+  const labels = ordenadas.map(e => e[0]);
+  const data   = ordenadas.map(e => e[1]);
+  const colors = labels.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+
+  const ctx = document.getElementById('graficoDespesas').getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#181c27', hoverOffset: 6 }] },
+    options: {
+      cutout: '62%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e2335',
+          titleColor: '#f0f2ff',
+          bodyColor: '#8b91a8',
+          borderColor: 'rgba(255,255,255,.1)',
+          borderWidth: 1,
+          callbacks: {
+            label: c => {
+              const pct = total ? ((c.raw/total)*100).toFixed(1) : '0.0';
+              return ` ${brl(c.raw)} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // breakdown list
+  const bl = document.getElementById('breakdown-list');
+  if (!ordenadas.length) { bl.innerHTML = '<p style="color:var(--muted);font-size:13px;">Sem dados</p>'; return; }
+  bl.innerHTML = ordenadas.map(([parte, val], i) => {
+    const pct = total ? (val/total*100).toFixed(1) : '0';
+    return `
+      <div class="breakdown-item">
+        <div class="breakdown-dot" style="background:${colors[i % colors.length]};"></div>
+        <div class="breakdown-parte">${parte}</div>
+        <div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${pct}%;background:${colors[i % colors.length]};"></div></div>
+        <div class="breakdown-pct">${pct}%</div>
+        <div class="breakdown-val">${brl(val)}</div>
+      </div>`;
+  }).join('');
+}
+
+/* ── edit / delete ── */
 window.editarDespesa = function(index) {
   const d = despesas[index];
-  document.getElementById('data').value       = d.data;
+  document.getElementById('data').value       = dataStr(d.data);
   document.getElementById('item').value       = d.item;
   document.getElementById('quantidade').value = d.quantidade;
   document.getElementById('valor').value      = d.valor;
   document.getElementById('parte').value      = d.parte;
   editIndex = index;
-  btnAdicionar.textContent = 'Salvar Alterações';
+  document.getElementById('btn-label').textContent = '💾 Salvar Alterações';
+  document.getElementById('form-title').textContent = '✎ Editando Despesa';
+  document.getElementById('btn-cancelar').style.display = 'inline-flex';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
 window.excluirDespesa = async function(index) {
@@ -277,79 +859,63 @@ window.excluirDespesa = async function(index) {
   }
 };
 
+/* ── migrate ── */
 window.migrarDadosIniciais = async function() {
-  if (!confirm(
-    `Vai importar ${DADOS_MIGRACAO.length} registros históricos para o Google Sheets.\n` +
-    `⚠️ Dados existentes na planilha serão substituídos!\n\nContinuar?`
-  )) return;
+  if (!confirm(`Vai importar ${DADOS_MIGRACAO.length} registros históricos.\n⚠️ Dados existentes serão substituídos!\n\nContinuar?`)) return;
   mostrarLoading(true);
   try {
     await jsonp({ action: 'importar', rows: JSON.stringify(DADOS_MIGRACAO) });
     await carregarDespesas();
     document.getElementById('btn-migrar').style.display = 'none';
-    statusMostrar('✅ Migração concluída! 45 registros importados.', 'ok');
+    statusMostrar('✅ Migração concluída! ' + DADOS_MIGRACAO.length + ' registros importados.', 'ok');
   } catch (err) {
     alert('Erro na migração: ' + err.message);
     mostrarLoading(false);
   }
 };
 
-function atualizarGrafico() {
-  const agrupadas = {};
-  getDespesasFiltradas().forEach(d => {
-    agrupadas[d.parte] = (agrupadas[d.parte] || 0) + d.quantidade * d.valor;
-  });
-  const ordenadas = Object.entries(agrupadas).sort((a, b) => b[1] - a[1]);
-  const labels = ordenadas.map(e => e[0]);
-  const data   = ordenadas.map(e => e[1]);
-  const colors = labels.map((_, i) => `hsl(${i * 360 / labels.length}, 70%, 50%)`);
-  if (chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: 'pie',
-    data: { labels, datasets: [{ data, backgroundColor: colors }] },
-    options: {
-      plugins: {
-        legend: { position: 'bottom' },
-        tooltip: {
-          callbacks: {
-            label: c => {
-              const tot = c.dataset.data.reduce((a, b) => a + b, 0);
-              return `${c.label}: R$ ${c.raw.toFixed(2)} (${((c.raw/tot)*100).toFixed(2)}%)`;
-            }
-          }
-        }
-      }
-    }
-  });
-}
-
+/* ── export ── */
 window.exportarExcel = function() {
-  const f = getDespesasFiltradas().slice().sort((a,b)=>new Date(b.data)-new Date(a.data));
+  const f = getDespesasFiltradas().slice().sort((a,b) => dataStr(b.data).localeCompare(dataStr(a.data)));
   if (!f.length) return alert('Nenhuma despesa encontrada.');
   const ws = XLSX.utils.json_to_sheet(f.map(d => ({
-    Data: formatarData(d.data), Item: d.item, Quantidade: d.quantidade,
-    'Valor Unitário': d.valor.toFixed(2), Parte: d.parte,
-    Total: (d.quantidade*d.valor).toFixed(2)
+    Data: formatarData(d.data), Item: d.item,
+    Quantidade: Number(d.quantidade),
+    'Valor Unitário': Number(d.valor).toFixed(2),
+    Parte: d.parte,
+    Total: (Number(d.quantidade)*Number(d.valor)).toFixed(2)
   })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Despesas');
-  XLSX.writeFile(wb, 'despesas.xlsx');
+  XLSX.writeFile(wb, 'despesas-obra.xlsx');
 };
 
 window.exportarPDF = function() {
-  const f = getDespesasFiltradas().slice().sort((a,b)=>new Date(b.data)-new Date(a.data));
+  const f = getDespesasFiltradas().slice().sort((a,b) => dataStr(b.data).localeCompare(dataStr(a.data)));
   if (!f.length) return alert('Nenhuma despesa encontrada.');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
+  doc.setFontSize(14);
   doc.text('Relatório de Despesas de Obras', 14, 15);
+  doc.setFontSize(10);
+  doc.setTextColor(120);
+  doc.text('Gerado em ' + new Date().toLocaleDateString('pt-BR'), 14, 22);
   doc.autoTable({
     head: [['Data','Item','Qtd','Valor Unit.','Parte','Total']],
-    body: f.map(d=>[formatarData(d.data),d.item,d.quantidade,
-      'R$ '+d.valor.toFixed(2),d.parte,'R$ '+(d.quantidade*d.valor).toFixed(2)]),
-    startY: 20
+    body: f.map(d => [
+      formatarData(d.data), d.item, d.quantidade,
+      'R$ '+Number(d.valor).toFixed(2), d.parte,
+      'R$ '+(Number(d.quantidade)*Number(d.valor)).toFixed(2)
+    ]),
+    startY: 28,
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [245, 166, 35], textColor: 30 }
   });
-  doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY+10);
-  doc.save('despesas.pdf');
+  const tot = f.reduce((s,d) => s + Number(d.quantidade)*Number(d.valor), 0);
+  doc.setFontSize(11);
+  doc.setTextColor(40);
+  doc.text('Total: ' + brl(tot), 14, doc.lastAutoTable.finalY + 10);
+  doc.save('despesas-obra.pdf');
 };
 
 carregarDespesas();
