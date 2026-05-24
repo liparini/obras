@@ -18,13 +18,13 @@
     th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
     #total { margin-top: 15px; font-weight: bold; font-size: 1.2em; text-align: right; }
     .filters { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: center; }
-    .btn          { padding: 5px 10px; margin: 2px; border: none; border-radius: 4px; cursor: pointer; }
-    .btn-edit     { background: #ffc107; color: black; }
-    .btn-delete   { background: #dc3545; color: white; }
-    .btn-export   { background: #28a745; color: white; }
-    .btn-pdf      { background: #007bff; color: white; }
-    .btn-add      { background: #28a745; color: white; font-weight: bold; }
-    .btn-migrate  { background: #6f42c1; color: white; font-size: 0.85em; }
+    .btn         { padding: 5px 10px; margin: 2px; border: none; border-radius: 4px; cursor: pointer; }
+    .btn-edit    { background: #ffc107; color: black; }
+    .btn-delete  { background: #dc3545; color: white; }
+    .btn-export  { background: #28a745; color: white; }
+    .btn-pdf     { background: #007bff; color: white; }
+    .btn-add     { background: #28a745; color: white; font-weight: bold; }
+    .btn-migrate { background: #6f42c1; color: white; font-size: .85em; }
     #grafico-container { max-width: 600px; margin: 30px auto; }
     #loading { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35);
                z-index:999; justify-content:center; align-items:center; }
@@ -69,7 +69,7 @@
     <button class="btn"            onclick="atualizarTabela()">Aplicar Filtros</button>
     <button class="btn btn-export" onclick="exportarExcel()">Exportar Excel</button>
     <button class="btn btn-pdf"    onclick="exportarPDF()">Exportar PDF</button>
-    <button class="btn btn-migrate" onclick="migrarDadosIniciais()" id="btn-migrar"
+    <button class="btn btn-migrate" id="btn-migrar" onclick="migrarDadosIniciais()"
             title="Importa os 45 registros históricos (execute apenas uma vez)">
       📥 Migrar dados iniciais
     </button>
@@ -114,23 +114,41 @@ const btnAdicionar     = document.getElementById('btn-adicionar');
 const loadingEl        = document.getElementById('loading');
 const ctx              = document.getElementById('graficoDespesas').getContext('2d');
 
-// ── API via GET ──────────────────────────────────────────────
-function mostrarLoading(v) { loadingEl.style.display = v ? 'flex' : 'none'; }
+// ── JSONP helper (contorna CORS sem proxy) ───────────────────
+function jsonp(params) {
+  return new Promise((resolve, reject) => {
+    const cbName   = '_cb' + Date.now() + Math.floor(Math.random() * 1000);
+    const qs       = new URLSearchParams({ ...params, callback: cbName }).toString();
+    const script   = document.createElement('script');
+    const timeout  = setTimeout(() => {
+      cleanup(); reject(new Error('Timeout'));
+    }, 15000);
 
-async function apiGet(params) {
-  const qs  = new URLSearchParams(params).toString();
-  const res = await fetch(SCRIPT_URL + (qs ? '?' + qs : ''));
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
-  if (json.status !== 'ok') throw new Error(json.msg || 'Erro desconhecido');
-  return json;
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cbName] = (data) => {
+      cleanup();
+      if (data.status === 'ok') resolve(data);
+      else reject(new Error(data.msg || 'Erro no servidor'));
+    };
+
+    script.onerror = () => { cleanup(); reject(new Error('Falha ao conectar com o Apps Script')); };
+    script.src = SCRIPT_URL + '?' + qs;
+    document.body.appendChild(script);
+  });
 }
+
+function mostrarLoading(v) { loadingEl.style.display = v ? 'flex' : 'none'; }
 
 async function carregarDespesas() {
   mostrarLoading(true);
   try {
-    const json = await apiGet({ action: 'getAll' });
-    despesas   = json.data;
+    const res = await jsonp({ action: 'getAll' });
+    despesas  = res.data;
     atualizarTabela();
   } catch (e) {
     alert('Erro ao carregar dados: ' + e.message);
@@ -149,13 +167,12 @@ form.addEventListener('submit', async function(e) {
     valor:      document.getElementById('valor').value,
     parte:      document.getElementById('parte').value
   };
-
   mostrarLoading(true);
   try {
     if (editIndex === -1) {
-      await apiGet({ action: 'add', ...d });
+      await jsonp({ action: 'add', ...d });
     } else {
-      await apiGet({ action: 'edit', index: editIndex, ...d });
+      await jsonp({ action: 'edit', index: editIndex, ...d });
       editIndex = -1;
       btnAdicionar.textContent = 'Adicionar';
     }
@@ -194,8 +211,8 @@ function atualizarTabela() {
     .sort((a, b) => new Date(b.data) - new Date(a.data));
 
   filtradas.forEach(d => {
-    const subtotal = d.quantidade * d.valor;
-    total += subtotal;
+    const sub = d.quantidade * d.valor;
+    total += sub;
     const idx = despesas.indexOf(d);
     const tr  = document.createElement('tr');
     tr.innerHTML = `
@@ -204,7 +221,7 @@ function atualizarTabela() {
       <td>${d.quantidade}</td>
       <td>R$ ${d.valor.toFixed(2)}</td>
       <td>${d.parte}</td>
-      <td>R$ ${subtotal.toFixed(2)}</td>
+      <td>R$ ${sub.toFixed(2)}</td>
       <td>
         <button class="btn btn-edit"   onclick="editarDespesa(${idx})">Editar</button>
         <button class="btn btn-delete" onclick="excluirDespesa(${idx})">Excluir</button>
@@ -216,7 +233,6 @@ function atualizarTabela() {
   atualizarGrafico();
 }
 
-// ── editar / excluir ─────────────────────────────────────────
 window.editarDespesa = function(index) {
   const d = despesas[index];
   document.getElementById('data').value       = d.data;
@@ -232,7 +248,7 @@ window.excluirDespesa = async function(index) {
   if (!confirm('Deseja realmente excluir esta despesa?')) return;
   mostrarLoading(true);
   try {
-    await apiGet({ action: 'delete', index });
+    await jsonp({ action: 'delete', index });
     await carregarDespesas();
   } catch (err) {
     alert('Erro ao excluir: ' + err.message);
@@ -248,7 +264,7 @@ window.migrarDadosIniciais = async function() {
   )) return;
   mostrarLoading(true);
   try {
-    await apiGet({ action: 'importar', rows: JSON.stringify(DADOS_MIGRACAO) });
+    await jsonp({ action: 'importar', rows: JSON.stringify(DADOS_MIGRACAO) });
     await carregarDespesas();
     document.getElementById('btn-migrar').style.display = 'none';
     alert('✅ Migração concluída! 45 registros importados.');
@@ -268,7 +284,6 @@ function atualizarGrafico() {
   const labels    = ordenadas.map(e => e[0]);
   const data      = ordenadas.map(e => e[1]);
   const colors    = labels.map((_, i) => `hsl(${i * 360 / labels.length}, 70%, 50%)`);
-
   if (chart) chart.destroy();
   chart = new Chart(ctx, {
     type: 'pie',
@@ -280,7 +295,7 @@ function atualizarGrafico() {
           callbacks: {
             label: c => {
               const tot = c.dataset.data.reduce((a, b) => a + b, 0);
-              return `${c.label}: R$ ${c.raw.toFixed(2)} (${((c.raw / tot) * 100).toFixed(2)}%)`;
+              return `${c.label}: R$ ${c.raw.toFixed(2)} (${((c.raw/tot)*100).toFixed(2)}%)`;
             }
           }
         }
@@ -291,12 +306,12 @@ function atualizarGrafico() {
 
 // ── exportar Excel ───────────────────────────────────────────
 window.exportarExcel = function() {
-  const filtradas = getDespesasFiltradas().slice().sort((a, b) => new Date(b.data) - new Date(a.data));
-  if (!filtradas.length) return alert('Nenhuma despesa encontrada.');
-  const ws = XLSX.utils.json_to_sheet(filtradas.map(d => ({
+  const f = getDespesasFiltradas().slice().sort((a,b)=>new Date(b.data)-new Date(a.data));
+  if (!f.length) return alert('Nenhuma despesa encontrada.');
+  const ws = XLSX.utils.json_to_sheet(f.map(d => ({
     Data: formatarData(d.data), Item: d.item, Quantidade: d.quantidade,
     'Valor Unitário': d.valor.toFixed(2), Parte: d.parte,
-    Total: (d.quantidade * d.valor).toFixed(2)
+    Total: (d.quantidade*d.valor).toFixed(2)
   })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Despesas');
@@ -305,21 +320,18 @@ window.exportarExcel = function() {
 
 // ── exportar PDF ─────────────────────────────────────────────
 window.exportarPDF = function() {
-  const filtradas = getDespesasFiltradas().slice().sort((a, b) => new Date(b.data) - new Date(a.data));
-  if (!filtradas.length) return alert('Nenhuma despesa encontrada.');
+  const f = getDespesasFiltradas().slice().sort((a,b)=>new Date(b.data)-new Date(a.data));
+  if (!f.length) return alert('Nenhuma despesa encontrada.');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   doc.text('Relatório de Despesas de Obras', 14, 15);
   doc.autoTable({
-    head: [['Data', 'Item', 'Quantidade', 'Valor Unitário', 'Parte', 'Total']],
-    body: filtradas.map(d => [
-      formatarData(d.data), d.item, d.quantidade,
-      'R$ ' + d.valor.toFixed(2), d.parte,
-      'R$ ' + (d.quantidade * d.valor).toFixed(2)
-    ]),
+    head: [['Data','Item','Quantidade','Valor Unitário','Parte','Total']],
+    body: f.map(d=>[formatarData(d.data),d.item,d.quantidade,
+      'R$ '+d.valor.toFixed(2),d.parte,'R$ '+(d.quantidade*d.valor).toFixed(2)]),
     startY: 20
   });
-  doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY + 10);
+  doc.text(totalDiv.textContent, 14, doc.lastAutoTable.finalY+10);
   doc.save('despesas.pdf');
 };
 
